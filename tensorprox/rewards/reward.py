@@ -155,9 +155,9 @@ class ChallengeRewardModel(BaseModel):
 
             # Calculate total packets sent from attacker and benign machines
             attack_labels = ["TCP_SYN_FLOOD", "UDP_FLOOD"]
-            total_attacks_from_attacker, total_benign_from_attacker = calculate_traffic_counts(attack_counts, attack_labels)
-            total_benign_from_benign, total_attacks_from_benign = calculate_traffic_counts(benign_counts, attack_labels)
-
+            total_attacks_from_attacker, total_benign_from_attacker = self.calculate_traffic_counts(attack_counts, attack_labels)
+            total_attacks_from_benign, total_benign_from_benign = self.calculate_traffic_counts(benign_counts, attack_labels)
+            
             total_attacks_sent = total_attacks_from_attacker + total_attacks_from_benign
             total_benign_sent = total_benign_from_benign + total_benign_from_attacker
 

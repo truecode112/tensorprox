@@ -1,8 +1,13 @@
 #!/bin/bash
 
-# Ensure jq is installed
+# Ensure required tools are installed
 if ! command -v jq &> /dev/null; then
     sudo apt-get update -qq && sudo apt-get install -y jq -qq
+fi
+
+if ! command -v tcpdump &> /dev/null; then
+    sudo apt-get update > /dev/null 2>&1
+    sudo apt-get install -y tcpdump > /dev/null 2>&1
 fi
 
 machine_name="$1"
@@ -46,21 +51,16 @@ if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
     nohup python3 $traffic_gen_path --playlist /tmp/playlist.json --receiver-ips $king_ip --interface ipip-$machine_name > /tmp/traffic_generator.log 2>&1 &
 fi
 
-# Ensure tcpdump is installed
-if ! command -v tcpdump &> /dev/null; then
-    sudo apt-get update && sudo apt-get install -y tcpdump
-fi
-
 # Capture network traffic for a duration
 sudo timeout $challenge_duration tcpdump -n -i gre-moat -w /tmp/capture.pcap "$filter_traffic"
 
-# Extract the payload data from pcap file to a temporary file
+# Extract payload data from pcap file to a temporary file
 sudo tcpdump -nnn -r /tmp/capture.pcap -A > /tmp/capture_payload.txt
 
-# Count occurrences of each label pattern separately
-benign_count=$(grep -o -E "$benign_pattern" /tmp/capture_payload.txt | wc -l)
-udp_flood_count=$(grep -o -E "$udp_flood_pattern" /tmp/capture_payload.txt | wc -l)
-tcp_syn_flood_count=$(grep -o -E "$tcp_syn_flood_pattern" /tmp/capture_payload.txt | wc -l)
+# Count unique occurrences of each label pattern
+benign_count=$(grep -E "$benign_pattern" /tmp/capture_payload.txt | sort | uniq | wc -l)
+udp_flood_count=$(grep -E "$udp_flood_pattern" /tmp/capture_payload.txt | sort | uniq | wc -l)
+tcp_syn_flood_count=$(grep -E "$tcp_syn_flood_pattern" /tmp/capture_payload.txt | sort | uniq | wc -l)
 
 # Measure RTT if the machine is attacker or benign
 if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
@@ -81,6 +81,5 @@ fi
 
 # Delete temporary files
 rm -f /tmp/capture.pcap
-rm -f /tmp/capture_payload.txt
 rm -f /tmp/playlist.json
 rm -f /tmp/rtt.txt
