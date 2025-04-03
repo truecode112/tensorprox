@@ -100,7 +100,7 @@ class Miner(BaseMinerNeuron):
     firewall_active: bool = False
     firewall_thread: Thread = None
     stop_firewall_event: Event = Field(default_factory=Event)
-    packet_buffer: List[Tuple[bytes, int]] = Field(default_factory=list)
+    packet_buffers: Dict[str, List[Tuple[bytes, int]]] = Field(default_factory=lambda: defaultdict(list))
     batch_interval: int = 10
             
     _lock: asyncio.Lock = PrivateAttr()
@@ -295,12 +295,14 @@ class Miner(BaseMinerNeuron):
             pass
 
 
-    async def process_packet_stream(self, packet_data, destination_ip):
+    async def process_packet_stream(self, packet_data, destination_ip, iface):
         """
-        Store packet and its protocol in buffer instead of processing immediately.
+        Store packet and its protocol in the corresponding buffer for the given interface.
         
         Args:
-            packet_data (bytes): The network packet data to store.   
+            packet_data (bytes): The network packet data to store.
+            destination_ip (str): The expected destination IP.
+            iface (str): The interface name.
         """
 
         if len(packet_data) < 20:
@@ -321,7 +323,7 @@ class Miner(BaseMinerNeuron):
             return  # Ignore packets not originating from king_overlay_ip
 
         async with self._lock:
-            self.packet_buffer.append((packet_data, protocol))  # Store tuple
+            self.packet_buffers[iface].append((packet_data, protocol))  # Store in the respective buffer
 
 
     def extract_batch_features(self, packet_batch):
@@ -418,11 +420,11 @@ class Miner(BaseMinerNeuron):
                 await asyncio.sleep(self.batch_interval)  # Wait for batch interval
 
                 async with self._lock:
-                    if not self.packet_buffer:
+                    if not self.packet_buffers[iface]:
                         continue  # No packets to process
 
-                    batch = self.packet_buffer[:]
-                    self.packet_buffer.clear()
+                    batch = self.packet_buffers[iface][:]
+                    self.packet_buffers[iface].clear()
 
                 # Extract batch-level features
                 features = self.extract_batch_features(batch)
@@ -478,7 +480,7 @@ class Miner(BaseMinerNeuron):
             ready, _, _ = select.select([raw_socket], [], [], 1)  # 1s timeout
             if ready:
                 packet_data = raw_socket.recv(65535)
-                await self.process_packet_stream(packet_data, destination_ip)
+                await self.process_packet_stream(packet_data, destination_ip, iface)
 
             await asyncio.sleep(0)  # Yield control back to the event loop to run other tasks (like batch_processing_loop)
 
