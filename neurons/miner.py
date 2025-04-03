@@ -349,11 +349,10 @@ class Miner(BaseMinerNeuron):
         })
 
         for packet_data, protocol in packet_batch:
-            eth_protocol = struct.unpack('!H', packet_data[12:14])[0]
-            if eth_protocol != 0x0800:  # Ignore non-IPv4 packets
+            if len(packet_data) < 20:
                 continue
 
-            ip_header = struct.unpack('!BBHHHBBH4s4s', packet_data[14:34])
+            ip_header = struct.unpack('!BBHHHBBH4s4s', packet_data[0:20])
             protocol = ip_header[6]
             src_ip = socket.inet_ntoa(ip_header[8])
             dest_ip = socket.inet_ntoa(ip_header[9])
@@ -366,7 +365,7 @@ class Miner(BaseMinerNeuron):
             entry["fwd_packet_count"] += 1
 
             if protocol == 6:  # TCP
-                tcp_header = struct.unpack('!HHLLBBHHH', packet_data[34:54])
+                tcp_header = struct.unpack('!HHLLBBHHH', packet_data[20:40])
                 flags = tcp_header[5]
                 pkt_size = len(packet_data)
                 entry["total_fwd_pkt_size"] += pkt_size
@@ -375,7 +374,7 @@ class Miner(BaseMinerNeuron):
                     entry["tcp_syn_fwd_count"] += 1
 
             elif protocol == 17:  # UDP
-                udp_header = struct.unpack('!HHHH', packet_data[34:42])
+                udp_header = struct.unpack('!HHHH', packet_data[20:28])
                 src_port, dest_port = udp_header[0], udp_header[1]
                 pkt_size = len(packet_data)
                 entry["total_fwd_pkt_size"] += pkt_size
