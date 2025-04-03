@@ -100,3 +100,4 @@ fi
 rm -f /tmp/capture.pcap
 rm -f /tmp/playlist.json
 rm -f /tmp/rtt.txt
+rm -f /tmp/counts.txt
