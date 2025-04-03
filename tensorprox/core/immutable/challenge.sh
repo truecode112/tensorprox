@@ -22,6 +22,14 @@ benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
 udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
 tcp_syn_flood_pattern=$(echo "$label_hashes" | jq -r '.TCP_SYN_FLOOD | join("|")')
 
+# Default values for counts
+benign_count=0
+udp_flood_count=0
+tcp_syn_flood_count=0
+
+# Default RTT value
+rtt_avg=10000000
+
 # Define the traffic filtering based on machine_name
 if [ "$machine_name" == "king" ]; then
     filter_traffic="(tcp or udp) and inbound"
@@ -49,37 +57,47 @@ if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
 
     # Start traffic generator with the playlist
     nohup python3 $traffic_gen_path --playlist /tmp/playlist.json --receiver-ips $king_ip --interface ipip-$machine_name > /tmp/traffic_generator.log 2>&1 &
+
+    # Start continuous ping in background
+    INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+    nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
+
 fi
 
-# Capture network traffic for a duration
-sudo timeout $challenge_duration tcpdump -n -i gre-moat -w /tmp/capture.pcap "$filter_traffic"
+sudo timeout "$challenge_duration" tcpdump -A -l -nn -i gre-moat "$filter_traffic" 2>/dev/null | \
+    awk 'BEGIN { benign=0; udp_flood=0; tcp_syn_flood=0 } { 
+        payload = $0;
+        if (payload ~ /'"$benign_pattern"'/) benign++;
+        if (payload ~ /'"$udp_flood_pattern"'/) udp_flood++;
+        if (payload ~ /'"$tcp_syn_flood_pattern"'/) tcp_syn_flood++;
+    } 
+    END { print "BENIGN:"benign", UDP_FLOOD:"udp_flood", TCP_SYN_FLOOD:"tcp_syn_flood }' > /tmp/counts.txt &
 
-# Extract payload data from pcap file to a temporary file
-sudo tcpdump -nnn -r /tmp/capture.pcap -A > /tmp/capture_payload.txt
+wait  # Ensure tcpdump finishes before reading counts
 
-# Count unique occurrences of each label pattern
-benign_count=$(grep -E "$benign_pattern" /tmp/capture_payload.txt | sort | uniq | wc -l)
-udp_flood_count=$(grep -E "$udp_flood_pattern" /tmp/capture_payload.txt | sort | uniq | wc -l)
-tcp_syn_flood_count=$(grep -E "$tcp_syn_flood_pattern" /tmp/capture_payload.txt | sort | uniq | wc -l)
+# Read counts from /tmp/counts.txt
+counts=$(cat /tmp/counts.txt)
 
 # Measure RTT if the machine is attacker or benign
 if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
 
-    # Execute RTT measurement command
-    INTERFACE_IP=$(ip -4 addr show ipip-$machine_name | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-    ping -I $INTERFACE_IP -c 4 $king_ip > /tmp/rtt.txt
-
     # Extract average RTT from the ping output (assuming the ping command ran successfully)
-    rtt_avg=$(grep -oP 'rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)' /tmp/rtt.txt | awk -F'/' '{print $5}')
+    extracted_rtt=$(grep -oP 'rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)' /tmp/rtt.txt | awk -F'/' '{print $5}')
+
+    # Update rtt_avg only if extracted_rtt is not empty
+    if [[ ! -z "$extracted_rtt" ]]; then
+        rtt_avg=$extracted_rtt
+    fi
 
     # Output the counts along with the average RTT
-    echo "BENIGN:$benign_count, UDP_FLOOD:$udp_flood_count, TCP_SYN_FLOOD:$tcp_syn_flood_count, AVG_RTT:$rtt_avg"
+    echo "$counts, AVG_RTT:$rtt_avg"
 else
     # Output just the counts if the machine is neither attacker nor benign
-    echo "BENIGN:$benign_count, UDP_FLOOD:$udp_flood_count, TCP_SYN_FLOOD:$tcp_syn_flood_count"
+    echo "$counts"
 fi
 
 # Delete temporary files
 rm -f /tmp/capture.pcap
 rm -f /tmp/playlist.json
 rm -f /tmp/rtt.txt
+rm -f /tmp/counts.txt
