@@ -32,7 +32,7 @@ rtt_avg=10000000
 
 # Define the traffic filtering based on machine_name
 if [ "$machine_name" == "king" ]; then
-    filter_traffic="(tcp or udp) and inbound"
+    filter_traffic="(tcp or udp) and inbound and not (tcp[tcpflags] & (tcp-syn|tcp-ack) != 0) and not icmp and not src host $king_ip"
 else
     filter_traffic="(tcp or udp) and outbound"
 fi
@@ -100,4 +100,3 @@ fi
 rm -f /tmp/capture.pcap
 rm -f /tmp/playlist.json
 rm -f /tmp/rtt.txt
-rm -f /tmp/counts.txt
