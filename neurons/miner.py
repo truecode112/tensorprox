@@ -451,9 +451,19 @@ class Miner(BaseMinerNeuron):
             destination_ip (str): The destination IP to filter packets.
             ifaces (list): List of network interfaces to sniff packets on.
         """
+        
+        # Start batch processing task once for all interfaces
+        batch_task = asyncio.create_task(self.batch_processing_loop())
+        
+        # Create a task for each interface
+        sniffing_tasks = [self._sniff_on_interface(destination_ip, iface, stop_event) for iface in ifaces]
+        
+        # Run all tasks concurrently
+        await asyncio.gather(*sniffing_tasks)
+        
+        # Cancel the batch processing when sniffing is done
+        batch_task.cancel()
 
-        tasks = [self._sniff_on_interface(destination_ip, iface, stop_event) for iface in ifaces]
-        await asyncio.gather(*tasks)  # Run sniffing tasks concurrently
 
     async def _sniff_on_interface(self, destination_ip, iface, stop_event):
         """
@@ -471,9 +481,6 @@ class Miner(BaseMinerNeuron):
         raw_socket = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
         raw_socket.bind((iface, 0))
         raw_socket.setblocking(False)
-
-        # Start batch processing immediately and ensure it's non-blocking
-        asyncio.create_task(self.batch_processing_loop())  # Create task to run concurrently
 
         while not stop_event.is_set():
             ready, _, _ = select.select([raw_socket], [], [], 1)  # 1s timeout
