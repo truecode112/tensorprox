@@ -73,36 +73,31 @@ The scoring system evaluates miners based on their ability to **protect the King
 
 The reward function is composed of four key metrics:
 
+1. **Combined Attack Mitigation and Throughput (AMT)** - 40% Weight
+   - AMA Measures the ability to detect and block malicious traffic
+   - RTC Assesses the miner’s ability to process and forward benign traffic volume compared to other miners in the same round.
+   - Calculated as: 
+   ```
+   AMA = 1 - (total_reaching_attacks / total_attacks_sent)
+   RTC = total_reaching_benign / max_reaching_benign
+   AMT = (exp((AMA*RTC + 1)**2) - 1) / (exp(1) - 1)
+   ```
 
-1. **Benign Delivery Rate (BDR)** - 25% Weight
+2. **Benign Delivery Rate (BDR)** - 25% Weight
    - Evaluates the efficiency of forwarding normal traffic
    - Calculated as: 
    ```
    BDR = (exp((total_reaching_benign / total_benign_sent)**2) - 1) / (exp(1) - 1)
    ```
 
-2. **Selective Processing Score (SPS)** - 25% Weight
+3. **Selective Processing Score (SPS)** - 20% Weight
    - Measures traffic purity: out of all packets that reached the King, what percentage was benign?
    - Calculated as: 
    ```
     SPS = (exp((total_reaching_benign / total_reaching_packets)**2) - 1) / (exp(1) - 1)
    ```
 
-3. **Attack Penalty Score (APS)** - 20% Weight
-   - Measures the ability to detect and block malicious traffic
-   - Calculated as: 
-   ```
-   APS = (exp((1 - (total_reaching_attacks / total_attacks_sent))**2) - 1) / (exp(1) - 1)
-   ```
-
-4. **Relative Throughput Capacity (RTC)** - 15% Weight
-   - Assesses the miner’s ability to process and forward benign traffic volume compared to other miners in the same round.
-   - Ratio of total packets processed (sum of benign packets forwarded and attack packets blocked) by a miner to the highest number of packets processed by any miner in a given round :
-   ```
-   RTC = total_reaching_benign / max_reaching_benign
-   ```
-
-5. **Latency Factor (LF)** - 15% Weight
+4. **Latency Factor (LF)** - 15% Weight
    - Assesses response time and network performance
    - Calculated using log-based normalized Round-Trip Time (RTT): 
    ```
@@ -114,7 +109,7 @@ The reward function is composed of four key metrics:
 The final reward is calculated using a weighted sum:
 
 ```
-Reward = (0.25 * BDR) + (0.25 * SPS) + (0.2 * APS) + (0.15 * RTC) + (0.15 * LF)
+Reward = (0.2 * BDR) + (0.2 * SPS) + (0.2 * AMA) + (0.2 * RTC) + (0.2 * LF)
 ```
 
 

@@ -125,11 +125,10 @@ class ChallengeRewardModel(BaseModel):
         scores = []
 
         # Reward weights
-        alpha = 0.25  # Benign Delivery Rate (BDR)
-        beta = 0.25   # Selective Processing Score (SPS)
-        gamma = 0.2   # Attack Penalty Score (APS)
-        delta = 0.15  # Relative Throughput Capacity (RTC)
-        epsilon = 0.15  # Latency Factor (LF)
+        alpha = 0.4  # Combined Attack Mitigation and Throughput (AMT)
+        beta = 0.25   # Benign Delivery Rate (BDR)
+        gamma = 0.2   # Selective Processing Score (SPS)
+        delta = 0.15  # Latency Factor (LF)
 
         # Track max throughput for normalization
         max_reaching_benign = 0
@@ -191,8 +190,13 @@ class ChallengeRewardModel(BaseModel):
             rtt = data["rtt"]
 
             # Attack Penalty Score
-            APS = 1 - (total_reaching_attacks / total_attacks_sent) if total_attacks_sent > 0 else 1
-            reward_APS = self.exponential_ratio(APS)
+            AMA = 1 - (total_reaching_attacks / total_attacks_sent) if total_attacks_sent > 0 else 1
+
+            # Relative Throughput Capacity (benign only)
+            RTC = total_reaching_benign / max_reaching_benign if max_reaching_benign > 0 else 0
+
+            # Combined Attack Mitigation and Throughput (AMT)
+            reward_AMT = self.exponential_ratio(AMA*RTC + 1)
 
             # Benign Delivery Rate
             BDR = total_reaching_benign / total_benign_sent if total_benign_sent > 0 else 0
@@ -202,20 +206,18 @@ class ChallengeRewardModel(BaseModel):
             SPS = total_reaching_benign / total_reaching_packets if total_reaching_packets > 0 else 0
             reward_SPS = self.exponential_ratio(SPS)
 
-            # Relative Throughput Capacity (benign only)
-            RTC = total_reaching_benign / max_reaching_benign if max_reaching_benign > 0 else 0
-
             # Latency Factor
             LF = self.normalize_rtt(rtt)
 
+            logging.info(f"AMA for UID {uid} : {AMA}")
+            logging.info(f"RTC for UID {uid} : {RTC}")
+            logging.info(f"Reward AMT for UID {uid} : {reward_AMT}")          
             logging.info(f"BDR for UID {uid} : {BDR}")
             logging.info(f"SPS for UID {uid} : {SPS}")
-            logging.info(f"APS for UID {uid} : {APS}")
-            logging.info(f"RTC for UID {uid} : {RTC}")
             logging.info(f"Average RTT for UID {uid} : {rtt} ms")
             logging.info(f"LF for UID {uid} : {LF}")
 
-            reward = alpha * reward_BDR + beta * reward_SPS + gamma * reward_APS + delta * RTC + epsilon * LF
+            reward = alpha * reward_AMT + beta * reward_BDR + gamma * reward_SPS + delta * LF 
             scores.append(reward)
 
         return BatchRewardOutput(rewards=np.array(scores))
