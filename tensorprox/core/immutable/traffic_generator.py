@@ -903,7 +903,7 @@ class TCPTraffic(BenignTraffic):
             window_size = random.randint(8192, 65535)
             flags = random.choice(['S', 'SA', 'FA', 'P', 'R'])
             tcp_options = [
-                ('MSS', 1460),
+                ('MSS', 1405),
                 ('NOP', None),
                 ('WScale', random.randint(0, 14)),
                 ('Timestamp', (random.randint(0, 100000), 0))
@@ -1390,7 +1390,7 @@ class TCPBatchSYNFlood(TCPAttack):
     async def tcp_syn_flood_batch(self, sock: socket.socket, pause_event: Event) -> None:
         src_ip = self.generate_random_ip()
         start_time = time.time()
-        max_payload_size = self.interface_mtu - 40 if self.interface_mtu else 1460
+        max_payload_size = self.interface_mtu - 40 if self.interface_mtu else 1405
         # Use generate_payload with potential override
         payload = self.generate_payload("TCP_SYN_FLOOD-batch-syn-flood-", max_payload_size)
         
