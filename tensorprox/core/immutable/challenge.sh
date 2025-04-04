@@ -21,6 +21,7 @@ traffic_gen_path="$6"
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
 udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
 tcp_syn_flood_pattern=$(echo "$label_hashes" | jq -r '.TCP_SYN_FLOOD | join("|")')
+INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
 # Default values for counts
 benign_count=0
@@ -32,9 +33,11 @@ rtt_avg=10000000
 
 # Define the traffic filtering based on machine_name
 if [ "$machine_name" == "king" ]; then
-    filter_traffic="(tcp or udp) and inbound and not (tcp[tcpflags] & (tcp-syn|tcp-ack) != 0) and not icmp and not src host $king_ip"
+    # Only count true incoming packets, exclude responses
+    filter_traffic="(tcp or udp) and dst host $king_ip and not (tcp[tcpflags] & tcp-ack != 0)"
 else
-    filter_traffic="(tcp or udp) and outbound"
+    # For non-king machines, only count outbound packets
+    filter_traffic="(tcp or udp) and dst host $king_ip"
 fi
 
 # Traffic generation for attacker and benign
@@ -59,18 +62,17 @@ if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
     nohup python3 $traffic_gen_path --playlist /tmp/playlist.json --receiver-ips $king_ip --interface ipip-$machine_name > /tmp/traffic_generator.log 2>&1 &
 
     # Start continuous ping in background
-    INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
     nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
 
 fi
 
 sudo timeout "$challenge_duration" tcpdump -A -l -nn -i gre-moat "$filter_traffic" 2>/dev/null | \
-    awk 'BEGIN { benign=0; udp_flood=0; tcp_syn_flood=0 } { 
-        payload = $0;
-        if (payload ~ /'"$benign_pattern"'/) benign++;
-        if (payload ~ /'"$udp_flood_pattern"'/) udp_flood++;
-        if (payload ~ /'"$tcp_syn_flood_pattern"'/) tcp_syn_flood++;
-    } 
+    awk 'BEGIN { benign=0; udp_flood=0; tcp_syn_flood=0 } 
+    {
+        if ($0 ~ /'"$udp_flood_pattern"'/) udp_flood++;
+        else if ($0 ~ /'"$tcp_syn_flood_pattern"'/) tcp_syn_flood++;
+        else if ($0 ~ /'"$benign_pattern"'/) benign++;
+    }
     END { print "BENIGN:"benign", UDP_FLOOD:"udp_flood", TCP_SYN_FLOOD:"tcp_syn_flood }' > /tmp/counts.txt &
 
 wait  # Ensure tcpdump finishes before reading counts
@@ -97,7 +99,6 @@ else
 fi
 
 # Delete temporary files
-rm -f /tmp/capture.pcap
 rm -f /tmp/playlist.json
 rm -f /tmp/rtt.txt
 rm -f /tmp/counts.txt
