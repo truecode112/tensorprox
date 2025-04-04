@@ -82,7 +82,7 @@ The reward function is composed of four key metrics:
    ```
 
 2. **Selective Processing Score (SPS)** - 25% Weight
-   - Measure of traffic purity : out of everything that got through the firewall, what % was benign ?
+   - Measures traffic purity: out of all packets that reached the King, what percentage was benign?
    - Calculated as: 
    ```
     SPS = (exp((total_reaching_benign / total_reaching_packets)**2) - 1) / (exp(1) - 1)
