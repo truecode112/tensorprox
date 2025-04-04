@@ -271,28 +271,28 @@ class Miner(BaseMinerNeuron):
         loop.run_forever()  # Ensure the loop keeps running
 
 
-    async def moat_forward_packet(self, packet, destination_ip):
+    async def moat_forward_packet(self, packet, destination_ip, out_iface="ipip-to-king"):
         """
-        Forward the packet to King using raw sockets.
+        Forward the packet to King using raw socket and bind to `ipip-king` interface.
         
         Args:
-            packet (bytes): The network packet to be forwarded.
-            destination_ip (str): The IP address of King.
+            packet (bytes): The raw IP packet to be forwarded.
+            destination_ip (str): IP address of the King machine.
+            out_iface (str): Interface to send packet from (ipip-king).
         """
-        
         try:
-            # Create a raw socket
-            with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW) as s:
-                # Set IP header options if needed (e.g., TTL)
-                # s.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, 64)
-                
-                # Forward the packet directly
-                s.sendto(packet, (destination_ip, 0))  # Port 0 is ignored for raw sockets
-                
+            # Open raw socket for IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+
+            # Bind to specific interface
+            s.setsockopt(socket.SOL_SOCKET, 25, out_iface.encode())  # 25 = SO_BINDTODEVICE
+
+            # Send the raw packet (includes full IP header)
+            s.sendto(packet, (destination_ip, 0))
+            s.close()
+
         except Exception as e:
-            # Log any errors encountered during forwarding
-            # logger.error(f"Failed to forward packet to King ({destination_ip}) - Error: {e}")
-            pass
+            print(f"Forwarding failed: {e}")
 
 
     async def process_packet_stream(self, packet_data, destination_ip, iface):

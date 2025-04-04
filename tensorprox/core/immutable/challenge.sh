@@ -31,13 +31,15 @@ tcp_syn_flood_count=0
 # Default RTT value
 rtt_avg=10000000
 
-# Define the traffic filtering based on machine_name
+# Define the traffic filtering and interface based on machine_name
 if [ "$machine_name" == "king" ]; then
-    # Only count true incoming packets, exclude responses
+    # For King machine, monitor traffic on ipip-king interface
     filter_traffic="(tcp or udp) and dst host $king_ip and not (tcp[tcpflags] & tcp-ack != 0)"
+    interface="ipip-king"
 else
-    # For non-king machines, only count outbound packets
+    # For non-king machines, monitor traffic on gre-moat interface
     filter_traffic="(tcp or udp) and dst host $king_ip"
+    interface="gre-moat"
 fi
 
 # Traffic generation for attacker and benign
@@ -66,7 +68,7 @@ if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
 
 fi
 
-sudo timeout "$challenge_duration" tcpdump -A -l -nn -i gre-moat "$filter_traffic" 2>/dev/null | \
+sudo timeout "$challenge_duration" tcpdump -A -l -nn -i "$interface" "$filter_traffic" 2>/dev/null | \
     awk 'BEGIN { benign=0; udp_flood=0; tcp_syn_flood=0 } 
     {
         if ($0 ~ /'"$udp_flood_pattern"'/) udp_flood++;
