@@ -114,26 +114,27 @@ class ChallengeRewardModel(BaseModel):
         Calculate rewards for a batch of users based on their packet capture data.
 
         Args:
+            response_event (DendriteResponseEvent): Contains challenge results.
             uids (List[int]): A list of user IDs.
-            label_hashes (Dict): A dictionary mapping original labels to encrypted labels.
+            label_hashes (Dict): Mapping of labels used in the challenge.
 
         Returns:
-            BatchRewardOutput: An instance containing an array of computed rewards.
+            BatchRewardOutput: Rewards for each UID.
         """
 
         scores = []
 
-        # Define weights
-        alpha = 0.3  # Attack Detection Accuracy (ADA)
-        beta = 0.3   # False Positive Rate (FPR)
-        gamma = 0.2  # Throughput efficiency
-        delta = 0.2  # Latency factor
+        # Reward weights
+        alpha = 0.25  # Benign Delivery Rate (BDR)
+        beta = 0.25   # Selective Processing Score (SPS)
+        gamma = 0.2   # Attack Penalty Score (APS)
+        delta = 0.15  # Relative Throughput Capacity (RTC)
+        epsilon = 0.15  # Latency Factor (LF)
 
-        # Determine the maximum number of packets sent by any participant
-        max_packets_processed = 0
+        # Track max throughput for normalization
+        max_reaching_benign = 0
         packet_data = {}
 
-        # Data collection for each user
         for uid in uids:
             label_counts_results = response_event.challenge_status_by_uid[uid]["label_counts_results"]
             default_count = {label: 0 for label in label_hashes.keys()}
@@ -145,85 +146,75 @@ class ChallengeRewardModel(BaseModel):
             attack_avg_rtt = next((avg_rtt for machine, _, avg_rtt in label_counts_results if machine == "attacker"), 0)
             benign_avg_rtt = next((avg_rtt for machine, _, avg_rtt in label_counts_results if machine == "benign"), 0)
 
-            # If all counts are the default (i.e., zero), skip this user
             if all(value == 0 for value in attack_counts.values()) and \
             all(value == 0 for value in benign_counts.values()) and \
             all(value == 0 for value in king_counts.values()):
                 continue
 
-            # Average RTT of the traffic gen machines
             rtt = max((attack_avg_rtt + benign_avg_rtt) / 2, 0)
 
-            # Calculate total packets sent from attacker and benign machines
             attack_labels = ["TCP_SYN_FLOOD", "UDP_FLOOD"]
+
             total_attacks_from_attacker, total_benign_from_attacker = self.calculate_traffic_counts(attack_counts, attack_labels)
             total_attacks_from_benign, total_benign_from_benign = self.calculate_traffic_counts(benign_counts, attack_labels)
-            
+
             total_attacks_sent = total_attacks_from_attacker + total_attacks_from_benign
-            total_benign_sent = total_benign_from_benign + total_benign_from_attacker
+            total_benign_sent = total_benign_from_attacker + total_benign_from_benign
 
-            # Calculate total attack packets processed (reaching King)
             total_reaching_attacks = sum(king_counts.get(label, 0) for label in attack_labels)
-
-            # Total attacks blocked (not reaching King)
-            total_blocked_attacks = total_attacks_sent - total_reaching_attacks
-
-            # Total benign packets processed (reaching King)
             total_reaching_benign = king_counts.get("BENIGN", 0)
+            total_reaching_packets = total_reaching_benign + total_reaching_attacks
+            max_reaching_benign = max(max_reaching_benign, total_reaching_benign)
 
-            total_packets_processed = total_blocked_attacks + total_reaching_benign
-            max_packets_processed = max(max_packets_processed, total_packets_processed)
-
-            # Save all the calculated values in a dictionary for use in the reward calculation loop
             packet_data[uid] = {
                 "total_attacks_sent": total_attacks_sent,
                 "total_benign_sent": total_benign_sent,
-                "total_blocked_attacks": total_blocked_attacks,
+                "total_reaching_attacks": total_reaching_attacks,
                 "total_reaching_benign": total_reaching_benign,
+                "total_reaching_packets": total_reaching_packets,
                 "rtt": rtt
             }
 
-            logging.info(f"PACKET DATA : {packet_data}")
-            
-        # Calculate rewards for each participant
         for uid in uids:
-            if uid not in packet_data.keys():
+            if uid not in packet_data:
                 scores.append(0.0)
                 continue
 
-            # Get the pre-calculated values for the user
             data = packet_data[uid]
             total_attacks_sent = data["total_attacks_sent"]
             total_benign_sent = data["total_benign_sent"]
-            total_blocked_attacks = data["total_blocked_attacks"]
+            total_reaching_attacks = data["total_reaching_attacks"]
             total_reaching_benign = data["total_reaching_benign"]
+            total_reaching_packets = data["total_reaching_packets"]
             rtt = data["rtt"]
 
-            # Attack Mitigation Accuracy (AMA)
-            AMA = total_blocked_attacks / total_attacks_sent if total_attacks_sent > 0 else 0
-            reward_AMA = self.exponential_ratio(ratio=AMA)
+            # Attack Penalty Score
+            APS = 1 - (total_reaching_attacks / total_attacks_sent) if total_attacks_sent > 0 else 1
+            reward_APS = self.exponential_ratio(APS)
 
-            # Benign Delivery Rate (BDR)
-            BDR = total_reaching_benign / total_benign_sent if total_benign_sent > 0 else 0    
-            reward_BDR = self.exponential_ratio(ratio=BDR)
+            # Benign Delivery Rate
+            BDR = total_reaching_benign / total_benign_sent if total_benign_sent > 0 else 0
+            reward_BDR = self.exponential_ratio(BDR)
 
-            # Relative Throughput Capacity (RTC)
-            RTC = (total_blocked_attacks + total_reaching_benign) / max_packets_processed if max_packets_processed > 0 else 0
+            # Selective Processing Score
+            SPS = total_reaching_benign / total_reaching_packets if total_reaching_packets > 0 else 0
+            reward_SPS = self.exponential_ratio(SPS)
 
-            # Log-based Normalized RTT          
-            LF = self.normalize_rtt(input=rtt)
+            # Relative Throughput Capacity (benign only)
+            RTC = total_reaching_benign / max_reaching_benign if max_reaching_benign > 0 else 0
 
-            logging.info(f"AMA for UID {uid} : {AMA}")
-            logging.info(f"BDR for UID {uid} : {BDR}")
-            logging.info(f"RTC for UID {uid} : {RTC}")
-            logging.info(f"Average RTT for UID {uid} : {rtt} ms")
-            logging.info(f"LF for UID {uid} : {LF}")
+            # Latency Factor
+            LF = self.normalize_rtt(rtt)
 
-            # Calculate reward function
-            reward = alpha * reward_AMA + beta * reward_BDR + gamma * RTC + delta * LF
+            logging.info(
+                f"[UID {uid}] BDR: {BDR:.4f}, SPS: {SPS:.4f}, APS: {APS:.4f}, RTC: {RTC:.4f}, RTT: {rtt:.2f} ms, LF: {LF:.4f}"
+            )
+
+            reward = alpha * reward_BDR + beta * reward_SPS + gamma * reward_APS + delta * RTC + epsilon * LF
             scores.append(reward)
 
         return BatchRewardOutput(rewards=np.array(scores))
+
 
         
 
