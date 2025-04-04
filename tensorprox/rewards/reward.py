@@ -210,7 +210,7 @@ class ChallengeRewardModel(BaseModel):
 
             logging.info(f"BDR for UID {uid} : {BDR}")
             logging.info(f"SPS for UID {uid} : {SPS}")
-            logging.info(f"AMA for UID {uid} : {APS}")
+            logging.info(f"APS for UID {uid} : {APS}")
             logging.info(f"RTC for UID {uid} : {RTC}")
             logging.info(f"Average RTT for UID {uid} : {rtt} ms")
             logging.info(f"LF for UID {uid} : {LF}")
@@ -219,8 +219,6 @@ class ChallengeRewardModel(BaseModel):
             scores.append(reward)
 
         return BatchRewardOutput(rewards=np.array(scores))
-
-
         
 
 class BaseRewardConfig(BaseModel):
