@@ -73,31 +73,36 @@ The scoring system evaluates miners based on their ability to **protect the King
 
 The reward function is composed of four key metrics:
 
-1. **Combined Attack Mitigation and Benign Forward Rate (AMBF)** - 45% Weight
-   - Attack Mitigation Accuracy (AMA) : Measures the ability to detect and block malicious traffic
-   - Benign Delivery Rate (BDR) :  Evaluates the efficiency of forwarding normal traffic
+
+1. **Benign Delivery Rate (BDR)** - 25% Weight
+   - Evaluates the efficiency of forwarding normal traffic
    - Calculated as: 
    ```
-   AMA = 1 - (total_reaching_attacks / total_attacks_sent)
-   BDR = total_reaching_benign / total_benign_sent
-   AMBF = (exp((AMA*BDR)**2) - 1) / (exp(1) - 1)
+   BDR = (exp((total_reaching_benign / total_benign_sent)**2) - 1) / (exp(1) - 1)
    ```
 
-2. **Selective Processing Score (SPS)** - 20% Weight
-   - Measures traffic purity: out of all packets that reached the King, what percentage was benign?
+2. **Attack Mitigation Accuracy (AMA)** - 25% Weight
+   - Measures the ability to detect and block malicious traffic
+   - Calculated as: 
+   ```
+   AMA = (exp((1 - (total_reaching_attacks / total_attacks_sent))**2) - 1) / (exp(1) - 1)
+   ```
+
+3. **Selective Processing Score (SPS)** - 20% Weight
+   - Measures traffic purity: out of all packets that reached the King, what percentage was benign ?
    - Calculated as: 
    ```
     SPS = (exp((total_reaching_benign / total_reaching_packets)**2) - 1) / (exp(1) - 1)
    ```
 
-3. **Relative Throughput Capacity (RTC)** - 20% Weight
-   - Measures capacity to handle network traffic compared to other miners
-   - Ratio of reaching benign packets count to the highest number of benign packets forwarded by any miner in a given round :
+4. **Relative Throughput Capacity (RTC)** - 15% Weight
+   - Assesses the miner’s ability to process and forward benign traffic volume compared to other miners in the same round.
+   - Ratio of total packets processed (sum of benign packets forwarded and attack packets blocked) by a miner to the highest number of packets processed by any miner in a given round :
    ```
    RTC = total_reaching_benign / max_reaching_benign
    ```
 
-4. **Latency Factor (LF)** - 15% Weight
+5. **Latency Factor (LF)** - 15% Weight
    - Assesses response time and network performance
    - Calculated using log-based normalized Round-Trip Time (RTT): 
    ```
@@ -109,7 +114,7 @@ The reward function is composed of four key metrics:
 The final reward is calculated using a weighted sum:
 
 ```
-Reward = (0.45 * AMBF) + (0.2 * SPS) + (0.2 * RTC) + (0.15 * LF)
+Reward = (0.25 * BDR) + (0.25 * SPS) + (0.2 * APS) + (0.15 * RTC) + (0.15 * LF)
 ```
 
 
