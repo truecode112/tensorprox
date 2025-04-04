@@ -175,6 +175,8 @@ class ChallengeRewardModel(BaseModel):
                 "rtt": rtt
             }
 
+            logging.info(f"PACKET DATA : {packet_data}")
+
         for uid in uids:
             if uid not in packet_data:
                 scores.append(0.0)
@@ -206,9 +208,12 @@ class ChallengeRewardModel(BaseModel):
             # Latency Factor
             LF = self.normalize_rtt(rtt)
 
-            logging.info(
-                f"[UID {uid}] BDR: {BDR:.4f}, SPS: {SPS:.4f}, APS: {APS:.4f}, RTC: {RTC:.4f}, RTT: {rtt:.2f} ms, LF: {LF:.4f}"
-            )
+            logging.info(f"BDR for UID {uid} : {BDR}")
+            logging.info(f"SPS for UID {uid} : {SPS}")
+            logging.info(f"AMA for UID {uid} : {APS}")
+            logging.info(f"RTC for UID {uid} : {RTC}")
+            logging.info(f"Average RTT for UID {uid} : {rtt} ms")
+            logging.info(f"LF for UID {uid} : {LF}")
 
             reward = alpha * reward_BDR + beta * reward_SPS + gamma * reward_APS + delta * RTC + epsilon * LF
             scores.append(reward)
