@@ -114,7 +114,7 @@ The reward function is composed of four key metrics:
 The final reward is calculated using a weighted sum:
 
 ```
-Reward = (0.3 * AMA) + (0.3 * BDR) + (0.2 * RTC) + (0.2 * LF)
+Reward = (0.25 * BDR) + (0.25 * SPS) + (0.2 * APS) + (0.15 * RTC) + (0.15 * LF)
 ```
 
 
