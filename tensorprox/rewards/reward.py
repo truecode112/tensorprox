@@ -102,6 +102,13 @@ class ChallengeRewardModel(BaseModel):
     def exponential_ratio(ratio):
         return (math.exp(ratio**2) - 1) / (math.exp(1) - 1)
 
+    # Helper function to calculate total attack and benign traffic
+    @staticmethod
+    def calculate_traffic_counts(counts, attack_labels):
+        total_attacks = sum(counts.get(label, 0) for label in attack_labels)
+        total_benign = counts.get("BENIGN", 0)
+        return total_attacks, total_benign
+        
     def reward(self, response_event: DendriteResponseEvent, uids: List[int], label_hashes: Dict) -> BatchRewardOutput:
         """
         Calculate rewards for a batch of users based on their packet capture data.
@@ -125,12 +132,6 @@ class ChallengeRewardModel(BaseModel):
         # Determine the maximum number of packets sent by any participant
         max_packets_processed = 0
         packet_data = {}
-
-        # Helper function to calculate total attack and benign traffic
-        def calculate_traffic_counts(counts, attack_labels):
-            total_attacks = sum(counts.get(label, 0) for label in attack_labels)
-            total_benign = counts.get("BENIGN", 0)
-            return total_attacks, total_benign
 
         # Data collection for each user
         for uid in uids:
