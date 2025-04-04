@@ -183,6 +183,8 @@ class ChallengeRewardModel(BaseModel):
                 "rtt": rtt
             }
 
+            logging.info(f"PACKET DATA : {packet_data}")
+            
         # Calculate rewards for each participant
         for uid in uids:
             if uid not in packet_data.keys():

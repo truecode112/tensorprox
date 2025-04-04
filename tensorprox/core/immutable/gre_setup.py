@@ -1635,7 +1635,7 @@ class GRESetup:
         
         # 5. Set up routing for overlay IPs
         self.run_cmd(["ip", "route", "add", BENIGN_OVERLAY_IP, "via", "192.168.100.1", "dev", "gre-benign", "metric", "100"])
-        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "ipip-to-king", "metric", "100"])
+        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "metric", "100"])
         
         if attacker_private_ip:
             self.run_cmd(["ip", "route", "add", ATTACKER_OVERLAY_IP, "via", "192.168.102.1", "dev", "gre-attacker", "metric", "100"])
@@ -1643,8 +1643,8 @@ class GRESetup:
         # 6. Create policy routing tables for different directions
         # Table 100: benign → king
         self.run_cmd(["ip", "rule", "add", "iif", "gre-benign", "lookup", "100", "pref", "100"])
-        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "ipip-to-king", "table", "100"])
-        self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", "192.168.101.2", "dev", "ipip-to-king", "table", "100"])
+        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "table", "100"])
+        self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", "192.168.101.2", "dev", "gre-king", "table", "100"])
         
         # Table 101: King → benign/attacker
         self.run_cmd(["ip", "rule", "add", "iif", "gre-king", "lookup", "101", "pref", "101"])
@@ -1660,23 +1660,25 @@ class GRESetup:
             
             # Table 102: attacker → king
             self.run_cmd(["ip", "rule", "add", "iif", "gre-attacker", "lookup", "102", "pref", "102"])
-            self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "ipip-to-king", "table", "102"])
-            self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", "192.168.101.2", "dev", "ipip-to-king", "table", "102"])
+            self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "table", "102"])
+            self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", "192.168.101.2", "dev", "gre-king", "table", "102"])
         
         # Table 103: Catch-all for any traffic from any tunnel interface
         self.run_cmd(["ip", "rule", "add", "from", "10.0.0.0/8", "lookup", "103", "pref", "110"])
         self.run_cmd(["ip", "rule", "add", "to", "10.0.0.0/8", "lookup", "103", "pref", "111"])
-        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "ipip-to-king", "table", "103"])
+        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "table", "103"])
         self.run_cmd(["ip", "route", "add", BENIGN_OVERLAY_IP, "via", "192.168.100.1", "dev", "gre-benign", "table", "103"])
 
         if attacker_private_ip:
             self.run_cmd(["ip", "route", "add", ATTACKER_OVERLAY_IP, "via", "192.168.102.1", "dev", "gre-attacker", "table", "103"])
 
         # 7. Set up NAT and forwarding for ipip-to-king and gre-moat interfaces
+        self.run_cmd(["sudo", "ip", "route", "replace", "10.200.77.1", "dev", "ipip-to-king"])
+        self.run_cmd(["sudo", "ip", "route", "del", "10.200.77.1", "via", "192.168.101.2", "dev", "gre-king"])
         self.run_cmd(["sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", "ipip-to-king", "-j", "MASQUERADE"])
         self.run_cmd(["sudo", "iptables", "-A", "FORWARD", "-i", "gre-moat", "-o", "ipip-to-king", "-j", "ACCEPT"])
         self.run_cmd(["sudo", "iptables", "-A", "FORWARD", "-i", "ipip-to-king", "-o", "gre-moat", "-j", "ACCEPT"])
-
+    
         # 8. Set up enhanced acceleration for the moat node (central router)
         log("[INFO] Setting up enhanced acceleration for {0}".format(self.node_type), level=1)
         
@@ -1697,6 +1699,7 @@ class GRESetup:
         log(f"[INFO] CPU mask: {resource_plan['cpu_mask']}, socket memory: {resource_plan['socket_mem']}", level=0)
         
         return True
+
 
     def install_pkill(self):
         # Check if the system is Ubuntu/Debian-based
