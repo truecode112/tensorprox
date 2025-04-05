@@ -16,61 +16,49 @@ class MachineDetails(BaseModel):
     
 class MachineConfig(BaseModel):
     key_pair: Tuple[str, str] = ("", "")
-    machine_config: Dict[str, MachineDetails] = {name: MachineDetails() for name in NODE_TYPES}
-
-
+    traffic_generators: list[MachineDetails] = []
+    infra_nodes: Dict[str, MachineDetails] = {
+        "king": MachineDetails(),
+        "moat": MachineDetails(),
+    }
+    
 class AvailabilitySynapse(bt.Synapse):
     """AvailabilitySynapse is a specialized implementation of the `Synapse` class used to allow miners to let validators know
     about their status/availability to serve certain tasks"""
     task_availabilities: dict[str, bool]
 
 class PingSynapse(bt.Synapse):
-    """
-    Synapse for miners to report machine availability and corresponding details.
-    """
-
     machine_availabilities: MachineConfig = Field(
         default_factory=MachineConfig,
         title="Machine's Availabilities",
-        description="A dictionary where keys are machine names and values are MachineDetails instances. Miners populate this field.",
+        description="Contains both traffic generators and fixed infra nodes (king, moat).",
         allow_mutation=True,
     )
 
     def serialize(self) -> dict:
-        """
-        Serializes the `PingSynapse` into a dictionary.
-
-        Converts `MachineDetails` instances to dictionaries for external usage.
-        Also, properly includes the SSH key pair and ssh_user for validation purposes.
-        """
         return {
             "machine_availabilities": {
                 "key_pair": self.machine_availabilities.key_pair,
-                "machine_config": {
-                    key: details.dict() 
-                    for key, details in self.machine_availabilities.machine_config.items()
-                }
+                "traffic_generators": [m.dict() for m in self.machine_availabilities.traffic_generators],
+                "infra_nodes": {
+                    role: node.dict() for role, node in self.machine_availabilities.infra_nodes.items()
+                },
             },
         }
 
-
     @classmethod
     def deserialize(cls, data: dict) -> "PingSynapse":
-        """
-        Deserializes a dictionary into an `PingSynapse`.
-
-        Converts nested dictionaries into `MachineDetails` instances.
-        Properly handles the SSH key pair and machine availability details.
-        """
-        machine_availabilities = {
-            key: MachineDetails(**details)
-            for key, details in data.get("machine_availabilities", {}).items()
-        }
-        
+        avail_data = data.get("machine_availabilities", {})
         return cls(
             machine_availabilities=MachineConfig(
-                key_pair=tuple(data.get("machine_availabilities", {}).get("key_pair", ("", ""))),
-                machine_config=machine_availabilities,
+                key_pair=tuple(avail_data.get("key_pair", ("", ""))),
+                traffic_generators=[
+                    MachineDetails(**m) for m in avail_data.get("traffic_generators", [])
+                ],
+                infra_nodes={
+                    role: MachineDetails(**node)
+                    for role, node in avail_data.get("infra_nodes", {}).items()
+                },
             ),
         )
 

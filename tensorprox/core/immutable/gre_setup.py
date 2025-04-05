@@ -1502,7 +1502,7 @@ class GRESetup:
         
         return True
 
-    def moat(self, benign_private_ip, attacker_private_ip, king_private_ip):
+    def moat(self, traffic_generator_private_ips, king_private_ip):
                 
         """Configure Moat node with enhanced acceleration and improved reliability"""
         # --- Begin robust error handling ---
@@ -1558,15 +1558,13 @@ class GRESetup:
             return False
         
         # Validate input IPs
-        if not benign_private_ip or not king_private_ip:
-            log("[ERROR] Both benign and king IP addresses are required", level=0)
+        if not traffic_generator_private_ips or not king_private_ip:
+            log("[ERROR] Both traffic generator IPs and king IP are required", level=0)
             return False
         
         log("[INFO] Setting up optimized moat node with IP {0}".format(local_ip))
-        log("[INFO] Connecting to benign at {0} and King at {1}".format(benign_private_ip, king_private_ip))
-        if attacker_private_ip:
-            log("[INFO] Also connecting to attacker at {0}".format(attacker_private_ip))
-        
+        log("[INFO] Connecting to King at {0}".format(king_private_ip))
+
         # Detect system capabilities and calculate resource allocation
         # Moat node needs more resources as it's the central router
         capabilities = self.detect_system_capabilities()
@@ -1579,125 +1577,73 @@ class GRESetup:
         self.optimize_kernel_params()
         
         # Clean up existing interfaces
-        for dev in ["gre-benign", "gre-king", "gre-attacker", "ipip-to-king"]:
+        for dev in ["gre-king", "ipip-to-king"]:
             self.flush_device(dev)
         
         # Clean any existing policy routing
         self.clean_policy_routing()
 
-        # 1. Create GRE tunnel to benign
-        self.run_cmd(["ip", "tunnel", "add", "gre-benign", "mode", "gre", 
-                "local", local_ip, "remote", benign_private_ip, "ttl", "inherit", 
-                "key", BENIGN_MOAT_KEY])
-        
-        self.run_cmd(["ip", "link", "set", "gre-benign", "mtu", str(GRE_MTU)])
-        self.run_cmd(["ip", "addr", "add", "192.168.100.2/30", "dev", "gre-benign"])
-        self.run_cmd(["ip", "link", "set", "gre-benign", "up"])
-        
-        # Apply tunnel-specific optimizations
-        self.optimize_tunnel_interface("gre-benign")
-        
+        # 1. Create GRE tunnels to each traffic generator
+        for tg_ip in traffic_generator_private_ips:
+            log("[INFO] Setting up GRE tunnel to traffic generator {0}".format(tg_ip))
+            self.run_cmd(["ip", "tunnel", "add", "gre-tg-{0}".format(tg_ip), "mode", "gre", 
+                        "local", local_ip, "remote", tg_ip, "ttl", "inherit", 
+                        "key", f"TG_MOAT_KEY_{tg_ip}"])
+            
+            self.run_cmd(["ip", "link", "set", f"gre-tg-{tg_ip}", "mtu", str(GRE_MTU)])
+            self.run_cmd(["ip", "addr", "add", f"192.168.100.{tg_ip}/30", "dev", f"gre-tg-{tg_ip}"])
+            self.run_cmd(["ip", "link", "set", f"gre-tg-{tg_ip}", "up"])
+
+            # Apply tunnel-specific optimizations
+            self.optimize_tunnel_interface(f"gre-tg-{tg_ip}")
+
         # 2. Create GRE tunnel to King
+        log("[INFO] Setting up GRE tunnel to King at {0}".format(king_private_ip))
         self.run_cmd(["ip", "tunnel", "add", "gre-king", "mode", "gre", 
-                "local", local_ip, "remote", king_private_ip, "ttl", "inherit", 
-                "key", MOAT_KING_KEY])
-        
+                    "local", local_ip, "remote", king_private_ip, "ttl", "inherit", 
+                    "key", "KING_MOAT_KEY"])
+
         self.run_cmd(["ip", "link", "set", "gre-king", "mtu", str(GRE_MTU)])
         self.run_cmd(["ip", "addr", "add", "192.168.101.1/30", "dev", "gre-king"])
         self.run_cmd(["ip", "link", "set", "gre-king", "up"])
-        
+
         # Apply tunnel-specific optimizations
         self.optimize_tunnel_interface("gre-king")
 
-        # 3. Create IPIP tunnel to King
-        self.run_cmd(["ip", "tunnel", "add", "ipip-to-king", "mode", "ipip", 
-                "local", "192.168.101.1", "remote", "192.168.101.2", 
-                "ttl", "inherit"])
-        
-        self.run_cmd(["ip", "link", "set", "ipip-to-king", "mtu", str(IPIP_MTU)])
-        self.run_cmd(["ip", "link", "set", "ipip-to-king", "up"])
+        # 3. Set up routing for overlay IPs
+        for tg_ip in traffic_generator_private_ips:
+            self.run_cmd(["ip", "route", "add", f"10.0.0.0/8", "via", f"192.168.100.{tg_ip}", "dev", f"gre-tg-{tg_ip}", "metric", "100"])
 
-        # Apply tunnel-specific optimizations
-        self.optimize_tunnel_interface("ipip-to-king")
-        
-        # 4. Create GRE tunnel to attacker if provided
-        if attacker_private_ip:
-            self.run_cmd(["ip", "tunnel", "add", "gre-attacker", "mode", "gre", 
-                    "local", local_ip, "remote", attacker_private_ip, "ttl", "inherit", 
-                    "key", ATTACKER_MOAT_KEY])
-            
-            self.run_cmd(["ip", "link", "set", "gre-attacker", "mtu", str(GRE_MTU)])
-            self.run_cmd(["ip", "addr", "add", "192.168.102.2/30", "dev", "gre-attacker"])
-            self.run_cmd(["ip", "link", "set", "gre-attacker", "up"])
-            
-            # Apply tunnel-specific optimizations
-            self.optimize_tunnel_interface("gre-attacker")
-        
-        # 5. Set up routing for overlay IPs
-        self.run_cmd(["ip", "route", "add", BENIGN_OVERLAY_IP, "via", "192.168.100.1", "dev", "gre-benign", "metric", "100"])
-        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "metric", "100"])
-        
-        if attacker_private_ip:
-            self.run_cmd(["ip", "route", "add", ATTACKER_OVERLAY_IP, "via", "192.168.102.1", "dev", "gre-attacker", "metric", "100"])
-        
-        # 6. Create policy routing tables for different directions
-        # Table 100: benign → king
-        self.run_cmd(["ip", "rule", "add", "iif", "gre-benign", "lookup", "100", "pref", "100"])
-        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "table", "100"])
-        self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", "192.168.101.2", "dev", "gre-king", "table", "100"])
-        
-        # Table 101: King → benign/attacker
-        self.run_cmd(["ip", "rule", "add", "iif", "gre-king", "lookup", "101", "pref", "101"])
-        self.run_cmd(["ip", "route", "add", BENIGN_OVERLAY_IP, "via", "192.168.100.1", "dev", "gre-benign", "table", "101"])
-        # Add broad route for 10.200.77.0/24 network (for dynamic IPs on benign)
-        self.run_cmd(["ip", "route", "add", "10.200.77.0/24", "via", "192.168.100.1", "dev", "gre-benign", "table", "101"])
+        self.run_cmd(["ip", "route", "add", "KING_OVERLAY_IP", "via", "192.168.101.2", "dev", "gre-king", "metric", "100"])
 
-        if attacker_private_ip:
-            # Add route for attacker in king->x table
-            self.run_cmd(["ip", "route", "add", ATTACKER_OVERLAY_IP, "via", "192.168.102.1", "dev", "gre-attacker", "table", "101"])
-            # Add broad route for 10.200.77.0/24 network (for dynamic IPs on attacker too)
-            self.run_cmd(["ip", "route", "add", "10.200.77.128/25", "via", "192.168.102.1", "dev", "gre-attacker", "table", "101"])
-            
-            # Table 102: attacker → king
-            self.run_cmd(["ip", "rule", "add", "iif", "gre-attacker", "lookup", "102", "pref", "102"])
-            self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "table", "102"])
-            self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", "192.168.101.2", "dev", "gre-king", "table", "102"])
-        
-        # Table 103: Catch-all for any traffic from any tunnel interface
-        self.run_cmd(["ip", "rule", "add", "from", "10.0.0.0/8", "lookup", "103", "pref", "110"])
-        self.run_cmd(["ip", "rule", "add", "to", "10.0.0.0/8", "lookup", "103", "pref", "111"])
-        self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "table", "103"])
-        self.run_cmd(["ip", "route", "add", BENIGN_OVERLAY_IP, "via", "192.168.100.1", "dev", "gre-benign", "table", "103"])
+        # 4. Set up policy routing for different traffic directions
+        for tg_ip in traffic_generator_private_ips:
+            self.run_cmd(["ip", "rule", "add", "iif", f"gre-tg-{tg_ip}", "lookup", f"TG_TABLE_{tg_ip}", "pref", "100"])
 
-        if attacker_private_ip:
-            self.run_cmd(["ip", "route", "add", ATTACKER_OVERLAY_IP, "via", "192.168.102.1", "dev", "gre-attacker", "table", "103"])
+        self.run_cmd(["ip", "rule", "add", "iif", "gre-king", "lookup", "KING_TABLE", "pref", "100"])
 
-        # 7. Set up NAT and forwarding for ipip-to-king and gre-moat interfaces
-        self.run_cmd(["sudo", "ip", "route", "replace", "10.200.77.1", "dev", "ipip-to-king"])
-        self.run_cmd(["sudo", "ip", "route", "del", "10.200.77.1", "via", "192.168.101.2", "dev", "gre-king"])
-        self.run_cmd(["sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", "ipip-to-king", "-j", "MASQUERADE"])
-        self.run_cmd(["sudo", "iptables", "-A", "FORWARD", "-i", "gre-moat", "-o", "ipip-to-king", "-j", "ACCEPT"])
-        self.run_cmd(["sudo", "iptables", "-A", "FORWARD", "-i", "ipip-to-king", "-o", "gre-moat", "-j", "ACCEPT"])
-    
-        # 8. Set up enhanced acceleration for the moat node (central router)
+        # 5. Set up NAT and forwarding for tunnels
+        self.run_cmd(["sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", "gre-king", "-j", "MASQUERADE"])
+        self.run_cmd(["sudo", "iptables", "-A", "FORWARD", "-i", "gre-king", "-o", "gre-tg", "-j", "ACCEPT"])
+
+        # 6. Set up enhanced acceleration for the moat node
         log("[INFO] Setting up enhanced acceleration for {0}".format(self.node_type), level=1)
-        
-        self.setup_enhanced_acceleration("gre-benign", resource_plan)
-        
+        self.setup_enhanced_acceleration("gre-king", resource_plan)
+
         log("[INFO] Enhanced acceleration setup complete for {0}".format(self.node_type), level=1)
-        
-        # 9. Allow ICMP traffic for testing
+
+        # Allow ICMP traffic for testing
         self.run_cmd(["iptables", "-A", "INPUT", "-p", "icmp", "-j", "ACCEPT"])
         self.run_cmd(["iptables", "-A", "OUTPUT", "-p", "icmp", "-j", "ACCEPT"])
         self.run_cmd(["iptables", "-A", "FORWARD", "-p", "icmp", "-j", "ACCEPT"])
-    
-        log("[INFO] Moat node setup complete with enhanced acceleration", level=1)
-        log("[INFO] Supporting dynamic IPs in 10.0.0.0/8 subnet for benign/attacker", level=1)
-        
+
+        log("[INFO] Moat node setup complete with enhanced acceleration")
+        log("[INFO] Supporting dynamic IPs in 10.0.0.0/8 subnet for traffic generators", level=1)
+
         # Log resource allocation for performance monitoring
         log(f"[INFO] MOAT node using {resource_plan['dpdk_cores']} DPDK cores, {resource_plan['hugepages_gb']}GB hugepages", level=0)
         log(f"[INFO] CPU mask: {resource_plan['cpu_mask']}, socket memory: {resource_plan['socket_mem']}", level=0)
-        
+
         return True
 
 

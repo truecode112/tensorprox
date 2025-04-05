@@ -44,7 +44,7 @@ Version: 0.1.0
 # ruff: noqa: E402
 import os, sys
 sys.path.append(os.path.expanduser("~/tensorprox"))
-import os
+import csv
 from tensorprox import *
 from tensorprox import settings
 settings.settings = settings.Settings.load(mode="miner")
@@ -76,17 +76,10 @@ import asyncssh
 NEURON_STOP_ON_FORWARD_EXCEPTION: bool = False
 
 #Miner global vars
-ATTACKER_PUBLIC_IP: str = os.environ.get("ATTACKER_PUBLIC_IP")
-BENIGN_PUBLIC_IP: str = os.environ.get("BENIGN_PUBLIC_IP")
 KING_PUBLIC_IP: str = os.environ.get("KING_PUBLIC_IP")
-ATTACKER_PRIVATE_IP: str = os.environ.get("ATTACKER_PRIVATE_IP")
-BENIGN_PRIVATE_IP: str = os.environ.get("BENIGN_PRIVATE_IP")
+KING_USERNAME: str = os.environ.get("KING_USERNAME", "root")
 KING_PRIVATE_IP: str = os.environ.get("KING_PRIVATE_IP")
 MOAT_PRIVATE_IP: str = os.environ.get("MOAT_PRIVATE_IP")
-FORWARD_PORT: int = os.environ.get("FORWARD_PORT", 8080)
-ATTACKER_USERNAME: str = os.environ.get("ATTACKER_USERNAME", "root")
-BENIGN_USERNAME: str = os.environ.get("BENIGN_USERNAME", "root")
-KING_USERNAME: str = os.environ.get("KING_USERNAME", "root")
 INITIAL_PK_PATH: str = os.environ.get("PRIVATE_KEY_PATH")
 
 class Miner(BaseMinerNeuron):
@@ -119,6 +112,10 @@ class Miner(BaseMinerNeuron):
         self._imputer = joblib.load(os.path.join(base_path, "imputer.pkl"))
         self._scaler = joblib.load(os.path.join(base_path, "scaler.pkl"))
 
+        # Load machine info
+        self.traffic_generators = load_trafficgen_machine_tuples()
+        self.king = (KING_PUBLIC_IP, KING_USERNAME, KING_PRIVATE_IP)
+        self.machines = self.traffic_generators.append(self.king)
 
     async def forward(self, synapse: PingSynapse) -> PingSynapse:
         """
@@ -130,34 +127,34 @@ class Miner(BaseMinerNeuron):
         Returns:
             PingSynapse: The updated synapse message.
         """
-
         logger.debug(f"📧 Ping received from {synapse.dendrite.hotkey}, IP: {synapse.dendrite.ip}.")
 
         try:
             ssh_public_key, ssh_private_key = self.generate_ssh_key_pair()
-
             synapse.machine_availabilities.key_pair = (ssh_public_key, ssh_private_key)
-            synapse.machine_availabilities.machine_config["attacker"] = MachineDetails(ip=ATTACKER_PUBLIC_IP, username=RESTRICTED_USER, private_ip=ATTACKER_PRIVATE_IP)
-            synapse.machine_availabilities.machine_config["benign"] = MachineDetails(ip=BENIGN_PUBLIC_IP, username=RESTRICTED_USER, private_ip=BENIGN_PRIVATE_IP)
-            synapse.machine_availabilities.machine_config["king"] = MachineDetails(ip=KING_PUBLIC_IP, username=RESTRICTED_USER, private_ip=KING_PRIVATE_IP)
-            synapse.machine_availabilities.machine_config["moat"] = MachineDetails(private_ip=MOAT_PRIVATE_IP)
 
-            #Machine's main user
-            machine_usernames = {
-                "attacker": ATTACKER_USERNAME,
-                "benign": BENIGN_USERNAME,
-                "king": KING_USERNAME
-            }
+            # === Step 1: Add traffic generation machines ===
+            synapse.machine_availabilities.traffic_generators = [
+                MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip)
+                for ip, _, private_ip in self.traffic_generators
+            ]
 
-            # Run SSH key addition in parallel
+            # === Step 2: Add infra nodes (king + moat) ===
+            synapse.machine_availabilities.infra_nodes["king"] = MachineDetails(
+                ip=KING_PUBLIC_IP, username=RESTRICTED_USER, private_ip=KING_PRIVATE_IP
+            )
+            synapse.machine_availabilities.infra_nodes["moat"] = MachineDetails(
+                private_ip=MOAT_PRIVATE_IP
+            )
+
+            # === Step 3: Prepare all SSH key addition tasks (excluding moat) ===
             tasks = [
                 self.add_ssh_key_to_remote_machine(
-                    machine_ip=machine_details.ip,
+                    machine_ip=ip,
                     ssh_public_key=ssh_public_key,
-                    username=machine_usernames.get(machine_name)
+                    username=username
                 )
-                for machine_name, machine_details in synapse.machine_availabilities.machine_config.items()
-                if machine_name != "moat"  # Skip Moat machine
+                for ip, username, _ in self.machines
             ]
 
             await asyncio.gather(*tasks)
@@ -170,8 +167,8 @@ class Miner(BaseMinerNeuron):
                 self.should_exit = True
 
         logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey}: {synapse}.")
-
         return synapse
+
 
 
     def handle_challenge(self, synapse: ChallengeSynapse) -> ChallengeSynapse:
@@ -792,7 +789,7 @@ async def setup_machines(github_token: str, machines: List[tuple], initial_priva
 
     tasks = []
 
-    for machine_ip, username in machines:
+    for machine_ip, username, _ in machines:
         tasks.append(run_whitelist_setup(machine_ip, initial_private_key_path, username))
     
     # Run all whitelist setup tasks concurrently and wait for them to complete
@@ -827,31 +824,41 @@ def run_gre_setup():
         logger.error(f"Error during GRE Setup: {e}")
         sys.exit(1)
 
+def load_trafficgen_machine_tuples(file_path = os.path.join(BASE_DIR, "trafficgen_machines.csv")) -> list[tuple[str, str]]:
+    """
+    Reads trafficgen_machines.csv and returns a list of (public_ip, username) tuples.
+    """
+    if not file_path.exists():
+        raise FileNotFoundError(f"Missing file: {file_path}")
+
+    machines = []
+    with file_path.open("r", newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            public_ip = row.get("public_ip", "").strip()
+            username = row.get("username", "").strip()
+            private_ip = row.get("private_ip", "").strip()
+            if public_ip and username:
+                machines.append((public_ip, username, private_ip))
+    return machines
+
 if __name__ == "__main__":
 
     logger.info("Miner Instance started.")
 
     run_gre_setup()
-
-    machines = [
-        (BENIGN_PUBLIC_IP, BENIGN_USERNAME), 
-        (ATTACKER_PUBLIC_IP, ATTACKER_USERNAME), 
-        (KING_PUBLIC_IP, KING_USERNAME)
-    ]
     
-    github_token = ""
-    
-    # Run the repository cloning setup first, wait for it to complete
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(
-        setup_machines(
-            github_token,
-            machines
-        )
-    )
-
     with Miner() as miner:
+        # Run the repository cloning setup first, wait for it to complete
+        github_token = ""
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(
+            setup_machines(github_token, miner.machines)  # Use miner's machines directly
+        )
+
+        # Main loop to keep the miner running
         while not miner.should_exit:
             miner.log_status()
             time.sleep(5)
+
         logger.warning("Ending miner...")

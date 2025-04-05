@@ -34,7 +34,7 @@ rtt_avg=10000000
 # Define the traffic filtering and interface based on machine_name
 if [ "$machine_name" == "king" ]; then
     # For King machine, monitor traffic on ipip-king interface
-    filter_traffic="(tcp or udp) and dst host $king_ip and not (tcp[tcpflags] & tcp-ack != 0)"
+    filter_traffic="(tcp or udp) and dst host $king_ip"
     interface="ipip-king"
     timeout_duration=$((challenge_duration + 2))  # Add 2 second buffer to ensure late packets are counted 
 else
@@ -70,7 +70,7 @@ if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
 
 fi
 
-sudo timeout "$timeout_duration" tcpdump -A -l -nn -i "$interface" "$filter_traffic" 2>/dev/null | \
+sudo timeout "$timeout_duration" tcpdump -A -l -i "$interface" "$filter_traffic" 2>/dev/null | \
     awk 'BEGIN { benign=0; udp_flood=0; tcp_syn_flood=0 } 
     {
         if ($0 ~ /'"$udp_flood_pattern"'/) udp_flood++;
