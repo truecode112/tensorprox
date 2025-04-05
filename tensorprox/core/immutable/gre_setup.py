@@ -1451,7 +1451,7 @@ class GRESetup:
             
             # Allocate overlay IP from the subnet for this traffic generator
             # Using scheme: 10.200.77.(index*32 + 1)
-            overlay_ip = f"10.200.77.{node_index * 32 + 1}" 
+            overlay_ip = f"10.200.77.{102 + node_index}" 
             
             moat_key = TGEN_MOAT_KEY_BASE + node_index
             tunnel_name = f"gre-moat-{node_index}"
@@ -1528,12 +1528,6 @@ class GRESetup:
         
         log(f"[INFO] {self.node_type.capitalize()} node setup complete with enhanced acceleration", level=1)
         log(f"[INFO] You can now use {overlay_ip} for tunnel traffic")
-        
-        if self.node_type == "tgen":
-            # For traffic generators, show available IP range
-            subnet_base = node_index * 32
-            log(f"[INFO] To add additional IPs, use: sudo ip addr add 10.200.77.X/32 dev {ipip_tunnel_name}")
-            log(f"[INFO] Available IP range for this generator: 10.200.77.{subnet_base+1} to 10.200.77.{subnet_base+31}")
         
         return True
 
@@ -1842,7 +1836,7 @@ def main():
         if len(sys.argv) < 4:
             print("[ERROR] node_index is required for tgen node type.")
             sys.exit(1)
-        node_index = sys.argv[3]
+        node_index = int(sys.argv[3])
     else:
         node_index = None  # No index required for 'king' node type
 

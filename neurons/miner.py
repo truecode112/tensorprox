@@ -627,8 +627,8 @@ async def clone_or_update_repository(
     username: str,
     initial_private_key_path: str = INITIAL_PK_PATH,
     repo_path: str = f"/home/{RESTRICTED_USER}/tensorprox",
-    repo_url: str = "github.com/borgg-dev/tensorprox.git",
-    branch: str = "tensorproxV3",
+    repo_url: str = "github.com/shugo-io/tensorprox.git",
+    branch: str = "scalable-trafficgen",
     sparse_folder: str = "tensorprox/core/immutable",
     timeout: int = 5,
     retries: int = 3,
@@ -856,7 +856,7 @@ if __name__ == "__main__":
     
     # Run the repository cloning setup first, wait for it to complete
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(setup_machines("", machines))
+    loop.run_until_complete(setup_machines("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", machines))
 
     with Miner() as miner:
         while not miner.should_exit:
