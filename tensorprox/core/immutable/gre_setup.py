@@ -23,12 +23,10 @@ DEBUG_LEVEL = 2
 
 # ===== GRE CONFIGURATION =====
 # Fixed overlay network IPs
-BENIGN_OVERLAY_IP = "10.200.77.102"
-ATTACKER_OVERLAY_IP = "10.200.77.103"
-KING_OVERLAY_IP = "10.200.77.1"
+KING_OVERLAY_IP = "10.0.0.1"
 
 # Fixed GRE tunnel keys
-MOAT_KING_KEY = "88"
+MOAT_KING_KEY = 10001
 TGEN_MOAT_KEY_BASE = 20000  # Base key for traffic generators
 
 # MTU Sizing 
@@ -1451,7 +1449,7 @@ class GRESetup:
             
             # Allocate overlay IP from the subnet for this traffic generator
             # Using scheme: 10.200.77.(index*32 + 1)
-            overlay_ip = f"10.200.77.{102 + node_index}" 
+            overlay_ip = f"10.200.77.{node_index * 32 + 1}" 
             
             moat_key = TGEN_MOAT_KEY_BASE + node_index
             tunnel_name = f"gre-moat-{node_index}"
