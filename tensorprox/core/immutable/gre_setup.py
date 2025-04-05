@@ -1626,6 +1626,11 @@ class GRESetup:
         
         # Clean any existing policy routing
         self.clean_policy_routing()
+
+        # Remove automatic forwarding rules
+        log("[INFO] Disabling automatic traffic forwarding...")
+        self.run_cmd(["sudo", "iptables", "-F", "FORWARD"])  # Flush all forwarding rules
+        self.run_cmd(["sudo", "iptables", "-P", "FORWARD", "DROP"])  # Set default policy to DROP for forwarding
         
         # Define subnet schemes
         # King tunnel: 192.168.101.0/30
@@ -1739,11 +1744,6 @@ class GRESetup:
         self.run_cmd(["sudo", "ip", "route", "replace", "10.200.77.1", "dev", "ipip-to-king"])
         self.run_cmd(["sudo", "ip", "route", "del", "10.200.77.1", "via", "192.168.101.2", "dev", "gre-king"])
         self.run_cmd(["sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", "ipip-to-king", "-j", "MASQUERADE"])
-        
-        # Set up forwarding rules for each traffic generator tunnel
-        for tgen in tgen_tunnels:
-            self.run_cmd(["sudo", "iptables", "-A", "FORWARD", "-i", tgen["name"], "-o", "ipip-to-king", "-j", "ACCEPT"])
-            self.run_cmd(["sudo", "iptables", "-A", "FORWARD", "-i", "ipip-to-king", "-o", tgen["name"], "-j", "ACCEPT"])
         
         # 7. Set up enhanced acceleration for the moat node
         log("[INFO] Setting up enhanced acceleration for {0}".format(self.node_type), level=1)
