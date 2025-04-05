@@ -72,6 +72,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 import asyncssh
+from pathlib import Path
 
 NEURON_STOP_ON_FORWARD_EXCEPTION: bool = False
 
@@ -112,10 +113,6 @@ class Miner(BaseMinerNeuron):
         self._imputer = joblib.load(os.path.join(base_path, "imputer.pkl"))
         self._scaler = joblib.load(os.path.join(base_path, "scaler.pkl"))
 
-        # Load machine info
-        self.traffic_generators = load_trafficgen_machine_tuples()
-        self.king = (KING_PUBLIC_IP, KING_USERNAME, KING_PRIVATE_IP)
-        self.machines = self.traffic_generators.append(self.king)
 
     async def forward(self, synapse: PingSynapse) -> PingSynapse:
         """
@@ -135,8 +132,8 @@ class Miner(BaseMinerNeuron):
 
             # === Step 1: Add traffic generation machines ===
             synapse.machine_availabilities.traffic_generators = [
-                MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip)
-                for ip, _, private_ip in self.traffic_generators
+                MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip, index=index)
+                for index, (ip, _, private_ip) in enumerate(traffic_generators)
             ]
 
             # === Step 2: Add infra nodes (king + moat) ===
@@ -154,7 +151,7 @@ class Miner(BaseMinerNeuron):
                     ssh_public_key=ssh_public_key,
                     username=username
                 )
-                for ip, username, _ in self.machines
+                for ip, username, _ in machines
             ]
 
             await asyncio.gather(*tasks)
@@ -723,7 +720,7 @@ async def clone_repositories(github_token: str, machines: List[tuple]):
     This function clones or updates the repositories on the remote machines.
     """
     tasks = []
-    for machine_ip, username in machines:
+    for machine_ip, username, _ in machines:
         tasks.append(clone_or_update_repository(
             machine_ip=machine_ip,
             github_token=github_token,
@@ -804,16 +801,17 @@ async def setup_machines(github_token: str, machines: List[tuple], initial_priva
 
 
         
-def run_gre_setup():
+def run_gre_setup(traffic_generators):
 
     logger.info("Running GRE Setup...")
     
     try:
         # Performing GRE Setup before starting
         gre = GRESetup(node_type="moat")
-        success = gre.moat(benign_private_ip=BENIGN_PRIVATE_IP, 
-                    attacker_private_ip=ATTACKER_PRIVATE_IP, 
-                    king_private_ip=KING_PRIVATE_IP)
+        success = gre.moat(
+            king_private_ip=KING_PRIVATE_IP,
+            traffic_gen_ips=[private_ip for (_, _, private_ip) in traffic_generators]
+        )
         if success :
             logger.info("GRE setup successfully done.")
         else :
@@ -828,8 +826,12 @@ def load_trafficgen_machine_tuples(file_path = os.path.join(BASE_DIR, "trafficge
     """
     Reads trafficgen_machines.csv and returns a list of (public_ip, username) tuples.
     """
+
+    # Convert string to Path object
+    file_path = Path(file_path)
+
     if not file_path.exists():
-        raise FileNotFoundError(f"Missing file: {file_path}")
+        raise FileNotFoundError(f"File not found: {file_path}")
 
     machines = []
     with file_path.open("r", newline="") as csvfile:
@@ -846,19 +848,18 @@ if __name__ == "__main__":
 
     logger.info("Miner Instance started.")
 
-    run_gre_setup()
-    
-    with Miner() as miner:
-        # Run the repository cloning setup first, wait for it to complete
-        github_token = ""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(
-            setup_machines(github_token, miner.machines)  # Use miner's machines directly
-        )
+    # Load machine info
+    traffic_generators = load_trafficgen_machine_tuples()
+    machines = traffic_generators + [(KING_PUBLIC_IP, KING_USERNAME, KING_PRIVATE_IP)]
 
-        # Main loop to keep the miner running
+    run_gre_setup(traffic_generators)
+    
+    # Run the repository cloning setup first, wait for it to complete
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(setup_machines("", machines))
+
+    with Miner() as miner:
         while not miner.should_exit:
             miner.log_status()
             time.sleep(5)
-
         logger.warning("Ending miner...")

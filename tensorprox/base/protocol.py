@@ -10,7 +10,8 @@ class MachineDetails(BaseModel):
     ip: str | None = None
     username: str | None = None
     private_ip: str | None = None
-    
+    index: str | None = None
+
     def get(self, key, default=None):
         return getattr(self, key, default)
     
