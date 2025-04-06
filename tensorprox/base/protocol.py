@@ -17,16 +17,9 @@ class MachineDetails(BaseModel):
     
 class MachineConfig(BaseModel):
     key_pair: Tuple[str, str] = ("", "")
-    traffic_generators: list[MachineDetails] = []
-    infra_nodes: Dict[str, MachineDetails] = {
-        "king": MachineDetails(),
-        "moat": MachineDetails(),
-    }
-    
-class AvailabilitySynapse(bt.Synapse):
-    """AvailabilitySynapse is a specialized implementation of the `Synapse` class used to allow miners to let validators know
-    about their status/availability to serve certain tasks"""
-    task_availabilities: dict[str, bool]
+    traffic_generators: list[MachineDetails] = Field(default_factory=list)
+    king: MachineDetails = Field(default_factory=MachineDetails)
+    moat_private_ip: str = ""
 
 class PingSynapse(bt.Synapse):
     machine_availabilities: MachineConfig = Field(
@@ -36,14 +29,13 @@ class PingSynapse(bt.Synapse):
         allow_mutation=True,
     )
 
-    def serialize(self) -> dict:
+    def serialize(self) -> dict[str, any]:
         return {
             "machine_availabilities": {
                 "key_pair": self.machine_availabilities.key_pair,
-                "traffic_generators": [m.dict() for m in self.machine_availabilities.traffic_generators],
-                "infra_nodes": {
-                    role: node.dict() for role, node in self.machine_availabilities.infra_nodes.items()
-                },
+                "traffic_generators": [m.model_dump() for m in self.machine_availabilities.traffic_generators],
+                "king": self.machine_availabilities.king.model_dump(),
+                "moat_private_ip": self.machine_availabilities.moat_private_ip,
             },
         }
 
@@ -56,13 +48,10 @@ class PingSynapse(bt.Synapse):
                 traffic_generators=[
                     MachineDetails(**m) for m in avail_data.get("traffic_generators", [])
                 ],
-                infra_nodes={
-                    role: MachineDetails(**node)
-                    for role, node in avail_data.get("infra_nodes", {}).items()
-                },
+                king=MachineDetails(**avail_data.get("king", {})),
+                moat_private_ip=avail_data.get("moat_private_ip", ""),
             ),
         )
-
 
 class ChallengeSynapse(bt.Synapse):
     """

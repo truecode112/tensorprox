@@ -96,17 +96,21 @@ class Miner(BaseMinerNeuron):
     stop_firewall_event: Event = Field(default_factory=Event)
     packet_buffers: Dict[str, List[Tuple[bytes, int]]] = Field(default_factory=lambda: defaultdict(list))
     batch_interval: int = 10
-            
+    traffic_generators: List[Tuple[str, str, str]] = Field(default=None)
+    machines: List[Tuple[str, str, str]] = Field(default=None)
+
     _lock: asyncio.Lock = PrivateAttr()
     _model: DecisionTreeClassifier = PrivateAttr()
     _imputer: SimpleImputer = PrivateAttr()
     _scaler: StandardScaler = PrivateAttr()
 
-    def __init__(self, **data):
+    def __init__(self, traffic_generators=None, machines=None, **data):
         """Initializes the Miner neuron with necessary machine learning models and configurations."""
 
         super().__init__(**data)
         self._lock = asyncio.Lock()
+        self.traffic_generators = traffic_generators
+        self.machines = machines
 
         base_path = os.path.expanduser("~/tensorprox/model") 
         self._model = joblib.load(os.path.join(base_path, "decision_tree.pkl"))
@@ -133,16 +137,15 @@ class Miner(BaseMinerNeuron):
             # === Step 1: Add traffic generation machines ===
             synapse.machine_availabilities.traffic_generators = [
                 MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip, index=index)
-                for index, (ip, _, private_ip) in enumerate(traffic_generators)
+                for index, (ip, _, private_ip) in enumerate(self.traffic_generators)
             ]
 
             # === Step 2: Add infra nodes (king + moat) ===
-            synapse.machine_availabilities.infra_nodes["king"] = MachineDetails(
+            synapse.machine_availabilities.king = MachineDetails(
                 ip=KING_PUBLIC_IP, username=RESTRICTED_USER, private_ip=KING_PRIVATE_IP
             )
-            synapse.machine_availabilities.infra_nodes["moat"] = MachineDetails(
-                private_ip=MOAT_PRIVATE_IP
-            )
+            synapse.machine_availabilities.moat_private_ip = MOAT_PRIVATE_IP
+
 
             # === Step 3: Prepare all SSH key addition tasks (excluding moat) ===
             tasks = [
@@ -151,7 +154,7 @@ class Miner(BaseMinerNeuron):
                     ssh_public_key=ssh_public_key,
                     username=username
                 )
-                for ip, username, _ in machines
+                for ip, username, _ in self.machines
             ]
 
             await asyncio.gather(*tasks)
@@ -857,7 +860,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(setup_machines("", machines))
 
-    with Miner() as miner:
+    with Miner(traffic_generators=traffic_generators, machines=machines) as miner:
         while not miner.should_exit:
             miner.log_status()
             time.sleep(5)

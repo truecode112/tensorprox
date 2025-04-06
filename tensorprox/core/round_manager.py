@@ -132,8 +132,6 @@ class RoundManager(BaseModel):
             bool: True if the machine is available, False otherwise.
         """
 
-        if machine_name == "moat":
-            return True  #Skip moat
         ip_machine = self.miners[uid].machine_availabilities[machine_name]
         return bool(ip_machine)
 
@@ -150,8 +148,6 @@ class RoundManager(BaseModel):
         """
 
         for machine_name in self.miners[uid].machine_availabilities.keys():
-            if machine_name == "moat":
-                continue  #Skip Moat
             if not self.check_machine_availability(machine_name=machine_name, uid=uid):
                 return False
         return True
@@ -297,10 +293,11 @@ class RoundManager(BaseModel):
 
         all_machines_available = True
 
-        for machine_name, machine_details in synapse.machine_availabilities.machine_config.items():
-
-            if machine_name == "moat":
-                continue  # Skip the Moat machine
+        # Create a list containing all machines to check - king and all traffic generators
+        machines_to_check = synapse.machine_availabilities.traffic_generators + [synapse.machine_availabilities.king]
+        
+        # Check all machines
+        for machine_details in machines_to_check:
 
             ip = machine_details.ip
             ssh_user = machine_details.username
@@ -536,7 +533,8 @@ class RoundManager(BaseModel):
         ssh_user: str,
         key_path: str,
         remote_base_directory: str,
-        machine_name: str,
+        machine_type: str,
+        index: str,
         moat_private_ip: str,
         script_name: str = "gre_setup.py",
         linked_files: list = []
@@ -567,8 +565,9 @@ class RoundManager(BaseModel):
         args = [
             '/usr/bin/python3.10', 
             remote_script_path,
-            machine_name, 
-            moat_private_ip
+            machine_type, 
+            moat_private_ip,
+            index
         ]
 
         return await self.run(
@@ -679,8 +678,8 @@ class RoundManager(BaseModel):
         """
         synapse, uid_status_availability = await self.query_availability(uid)  
 
-        self.king_ips[uid] = synapse.machine_availabilities.machine_config["king"].ip
-        self.moat_private_ips[uid] = synapse.machine_availabilities.machine_config["moat"].private_ip
+        self.king_ips[uid] = synapse.machine_availabilities.king.ip
+        self.moat_private_ips[uid] = synapse.machine_availabilities.moat_private_ip
         return synapse, uid_status_availability
     
     async def execute_task(
@@ -738,25 +737,22 @@ class RoundManager(BaseModel):
                 None: Updates task status for each machine.
             """
 
-            async def process_machine(machine_name, machine_details):
+            async def process_machine(machine_type, machine_details):
                 """
                 Apply task to a specific machine.
 
                 Args:
-                    machine_name (str): Name of the machine (e.g., "Moat").
+                    machine_type (str): Type of the machine ("king" or "tgen").
                     machine_details (object): Machine connection details (contains `ip`, `username`, etc.).
 
                 Returns:
                     bool: True if the task succeeds, False otherwise.
                 """
 
-                # If the machine is "Moat", skip the setup and immediately consider the task successful
-                if machine_name == "moat":
-                    return True  # Skip Moat machine setup and consider it successful
-
                 # Retrieve necessary connection and task details
                 ip = machine_details.ip
                 ssh_user = machine_details.username
+                index = machine_details.index
                 ssh_dir = get_authorized_keys_dir(ssh_user)  # Get directory for authorized keys
                 authorized_keys_path = f"{ssh_dir}/authorized_keys"  # Path to the authorized keys file
                 key_path = f"/var/tmp/original_key_{uid}.pem" if task == "initial_setup" else os.path.join(SESSION_KEY_DIR, f"session_key_{uid}_{ip}")  # Set key path based on the task type
@@ -767,6 +763,12 @@ class RoundManager(BaseModel):
                 moat_private_ip = self.moat_private_ips[uid]  # Private IP for the Moat machine
                 default_dir = get_default_dir(ssh_user=ssh_user)  # Get the default directory for the user
                 remote_base_directory = os.path.join(default_dir, "tensorprox")  # Define the remote base directory for tasks
+
+                machine_name = (
+                    "king" if machine_type == "king" 
+                    else f"{machine_type}-{index}" if machine_type == "tgen" 
+                    else "unknown"
+                )
 
                 try:
                     if task == "initial_setup":
@@ -805,7 +807,8 @@ class RoundManager(BaseModel):
                             ssh_user,
                             key_path,
                             remote_base_directory,
-                            machine_name,
+                            machine_type,
+                            index,
                             moat_private_ip
                         )
                     elif task == "challenge":
@@ -829,8 +832,9 @@ class RoundManager(BaseModel):
                     logging.error(f"Error executing task on {machine_name} with ip {ip} for miner {uid}: {e}")
                     return False
             
-            # Run revert for all machines of the miner
-            tasks = [process_machine(name, details) for name, details in synapse.machine_availabilities.machine_config.items() if name != "moat"]
+            # Run process for all machines of the miner
+            tasks = [process_machine("king", synapse.machine_availabilities.king)] + \
+                    [process_machine("tgen", tg) for tg in synapse.machine_availabilities.traffic_generators]
             results = await asyncio.gather(*tasks)
 
             if task == "challenge":
