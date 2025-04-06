@@ -197,19 +197,21 @@ class Validator(BaseValidatorNeuron):
                 
                 label_hashes = generate_random_hashes()
 
-                playlist_attacker = create_random_playlist(total_seconds=CHALLENGE_DURATION, label_hashes = label_hashes, role="aggressive", seed=seed)
-                playlist_benign = create_random_playlist(total_seconds=CHALLENGE_DURATION, label_hashes = label_hashes, role="soft", seed=seed)
+                playlists = {}
 
-                # Now reset the random seed to None before shuffling
-                random.seed(None)
-                random.shuffle(playlist_attacker)
-                random.shuffle(playlist_benign)
-
-                playlists = {
-                    "tgen-0" : playlist_benign,
-                    "tgen-1" : playlist_attacker
-                }
-
+                for i in range(MAX_TGENS):
+                    seed_playlist = seed + i
+                    role = "soft" if i % 2 == 0 else "aggressive"
+                    playlist = create_random_playlist(
+                        total_seconds=CHALLENGE_DURATION,
+                        label_hashes=label_hashes,
+                        role=role,
+                        seed=seed_playlist
+                    )
+                    random.seed(None)  # Reset the random seed before shuffling
+                    random.shuffle(playlist)
+                    playlists[f"tgen-{i}"] = playlist
+                
                 if subset_miners:
                     success = False
                     while not success :
