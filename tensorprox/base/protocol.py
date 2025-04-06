@@ -87,3 +87,7 @@ class ChallengeSynapse(bt.Synapse):
             state=data["state"],
         )
 
+class AvailabilitySynapse(bt.Synapse):
+    """AvailabilitySynapse is a specialized implementation of the `Synapse` class used to allow miners to let validators know
+    about their status/availability to serve certain tasks"""
+    task_availabilities: dict[str, bool]
