@@ -139,15 +139,15 @@ class ChallengeRewardModel(BaseModel):
             label_counts_results = response_event.challenge_status_by_uid[uid]["label_counts_results"]
             default_count = {label: 0 for label in label_hashes.keys()}
 
-            attack_counts = next((counts for machine, counts, _ in label_counts_results if machine == "attacker"), default_count)
-            benign_counts = next((counts for machine, counts, _ in label_counts_results if machine == "benign"), default_count)
+            tgen_1_counts = next((counts for machine, counts, _ in label_counts_results if machine == "tgen-1"), default_count)
+            tgen_0_counts = next((counts for machine, counts, _ in label_counts_results if machine == "tgen-0"), default_count)
             king_counts = next((counts for machine, counts, _ in label_counts_results if machine == "king"), default_count)
 
-            attack_avg_rtt = next((avg_rtt for machine, _, avg_rtt in label_counts_results if machine == "attacker"), 0)
-            benign_avg_rtt = next((avg_rtt for machine, _, avg_rtt in label_counts_results if machine == "benign"), 0)
+            attack_avg_rtt = next((avg_rtt for machine, _, avg_rtt in label_counts_results if machine == "tgen-1"), 0)
+            benign_avg_rtt = next((avg_rtt for machine, _, avg_rtt in label_counts_results if machine == "tgen-0"), 0)
 
-            if all(value == 0 for value in attack_counts.values()) and \
-            all(value == 0 for value in benign_counts.values()) and \
+            if all(value == 0 for value in tgen_1_counts.values()) and \
+            all(value == 0 for value in tgen_0_counts.values()) and \
             all(value == 0 for value in king_counts.values()):
                 continue
 
@@ -155,11 +155,11 @@ class ChallengeRewardModel(BaseModel):
 
             attack_labels = ["TCP_SYN_FLOOD", "UDP_FLOOD"]
 
-            total_attacks_from_attacker, total_benign_from_attacker = self.calculate_traffic_counts(attack_counts, attack_labels)
-            total_attacks_from_benign, total_benign_from_benign = self.calculate_traffic_counts(benign_counts, attack_labels)
+            total_attacks_from_tgen_1, total_benign_from_tgen_1 = self.calculate_traffic_counts(attack_counts, attack_labels)
+            total_attacks_from_tgen_0, total_benign_from_tgen_0 = self.calculate_traffic_counts(benign_counts, attack_labels)
 
-            total_attacks_sent = total_attacks_from_attacker + total_attacks_from_benign
-            total_benign_sent = total_benign_from_attacker + total_benign_from_benign
+            total_attacks_sent = total_attacks_from_tgen_1 + total_attacks_from_tgen_0
+            total_benign_sent = total_benign_from_tgen_1 + total_benign_from_tgen_0
 
             total_reaching_attacks = sum(king_counts.get(label, 0) for label in attack_labels)
             total_reaching_benign = king_counts.get("BENIGN", 0)

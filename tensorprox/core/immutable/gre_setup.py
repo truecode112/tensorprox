@@ -1451,7 +1451,7 @@ class GRESetup:
             overlay_ip = f"10.200.77.{node_index + 1}" 
             
             moat_key = TGEN_MOAT_KEY_BASE + node_index
-            tunnel_name = f"gre-moat-{node_index}"
+            tunnel_name = "gre-moat"
             ipip_tunnel_name = f"ipip-tgen-{node_index}"
         
         # Detect system capabilities and calculate resource allocation

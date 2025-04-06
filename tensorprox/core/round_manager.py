@@ -215,7 +215,6 @@ class RoundManager(BaseModel):
         """
 
         try:
-        
             # Parse the result to get the counts from stdout
             counts_and_rtt = result.stdout.strip().split(", ")
 
@@ -832,9 +831,14 @@ class RoundManager(BaseModel):
                     logging.error(f"Error executing task on {machine_name} with ip {ip} for miner {uid}: {e}")
                     return False
             
-            # Run process for all machines of the miner
-            tasks = [process_machine("king", synapse.machine_availabilities.king)] + \
-                    [process_machine("tgen", tg) for tg in synapse.machine_availabilities.traffic_generators]
+            # Create tasks for all machines of the miner
+            king_machine_task = process_machine("king", synapse.machine_availabilities.king)
+            traffic_generators_tasks = [
+                process_machine("tgen", details) for details in synapse.machine_availabilities.traffic_generators
+            ]
+
+            # Run all tasks concurrently
+            tasks = [king_machine_task] + traffic_generators_tasks
             results = await asyncio.gather(*tasks)
 
             if task == "challenge":

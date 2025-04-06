@@ -206,10 +206,9 @@ class Validator(BaseValidatorNeuron):
                 random.shuffle(playlist_benign)
 
                 playlists = {
-                    "attacker" : playlist_attacker,
-                    "benign" : playlist_benign
+                    "tgen-0" : playlist_benign,
+                    "tgen-1" : playlist_attacker
                 }
-                
 
                 if subset_miners:
                     success = False

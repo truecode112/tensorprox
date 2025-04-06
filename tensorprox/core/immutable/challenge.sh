@@ -31,14 +31,13 @@ tcp_syn_flood_count=0
 # Default RTT value
 rtt_avg=10000000
 
-# Define the traffic filtering and interface based on machine_name
+# Define the traffic filtering
+filter_traffic="(tcp or udp) and dst host $king_ip"
+
+# Add 2 second buffer to ensure late packets are counted 
 if [ "$machine_name" == "king" ]; then
-    # For King machine, monitor traffic on ipip-king interface
-    filter_traffic="(tcp or udp) and dst host $king_ip"
-    timeout_duration=$((challenge_duration + 2))  # Add 2 second buffer to ensure late packets are counted 
+    timeout_duration=$((challenge_duration + 2))
 else
-    # For non-king machines, monitor traffic on gre-moat interface
-    filter_traffic="(tcp or udp) and dst host $king_ip"
     timeout_duration=$challenge_duration
 fi
 

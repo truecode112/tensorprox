@@ -136,7 +136,7 @@ class Miner(BaseMinerNeuron):
 
             # === Step 1: Add traffic generation machines ===
             synapse.machine_availabilities.traffic_generators = [
-                MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip, index=index)
+                MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip, index=str(index))
                 for index, (ip, _, private_ip) in enumerate(self.traffic_generators)
             ]
 
@@ -190,12 +190,12 @@ class Miner(BaseMinerNeuron):
             logger.debug(f"📧 Synapse received from {synapse.dendrite.hotkey}. Task : {task} | State : {state}.")
 
             if state == "GET_READY":
-
+                interfaces = [f"gre-tgen-{i}" for i in range(len(self.traffic_generators))]
                 if not self.firewall_active:
                     self.firewall_active = True
                     self.stop_firewall_event.clear()  # Reset stop event
                     # Start sniffing in a separate thread to avoid blocking
-                    self.firewall_thread = Thread(target=self.run_packet_stream, args=(KING_OVERLAY_IP, ["gre-benign", "gre-attacker"]))
+                    self.firewall_thread = Thread(target=self.run_packet_stream, args=(KING_OVERLAY_IP, interfaces))
                     self.firewall_thread.daemon = True  # Set the thread to daemon mode to allow termination
                     self.firewall_thread.start()
                     logger.info("🔥 Moat firewall activated.")
