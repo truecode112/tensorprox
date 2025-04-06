@@ -35,6 +35,4 @@ RESTRICTED_USER = "valiops"
 SESSION_KEY_DIR = "/var/tmp/session_keys"
 
 # Fixed overlay network IPs
-BENIGN_OVERLAY_IP = "10.200.77.102"
-ATTACKER_OVERLAY_IP = "10.200.77.103"
-KING_OVERLAY_IP = "10.200.77.1"
+KING_OVERLAY_IP = "10.0.0.1"
