@@ -265,14 +265,14 @@ class Miner(BaseMinerNeuron):
         loop.run_forever()  # Ensure the loop keeps running
 
 
-    async def moat_forward_packet(self, packet, destination_ip, out_iface="ipip-to-king"):
+    async def moat_forward_packet(self, packet, destination_ip, out_iface="gre-king"):
         """
-        Forward the packet to King using raw socket and bind to `ipip-king` interface.
+        Forward the packet to King using raw socket and bind to `gre-king` interface.
         
         Args:
             packet (bytes): The raw IP packet to be forwarded.
-            destination_ip (str): IP address of the King machine.
-            out_iface (str): Interface to send packet from (ipip-king).
+            destination_ip (str): IP address of the King machine (should match GRE peer IP or overlay IP).
+            out_iface (str): Interface to send packet from (default: gre-king).
         """
         try:
             # Open raw socket for IP
@@ -283,11 +283,10 @@ class Miner(BaseMinerNeuron):
 
             # Send the raw packet (includes full IP header)
             s.sendto(packet, (destination_ip, 0))
-            s.close()
 
+            s.close()
         except Exception as e:
             print(f"Forwarding failed: {e}")
-
 
     async def process_packet_stream(self, packet_data, destination_ip, iface):
         """
