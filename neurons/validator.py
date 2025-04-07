@@ -192,26 +192,24 @@ class Validator(BaseValidatorNeuron):
                 # Ensure that each validator gets a unique subset of shuffled UIDs based on idx_permutation
                 subset_miners = sync_shuffled_uids[idx_permutation]
 
-                start_time = datetime.now()
-                backup_suffix = start_time.strftime("%Y%m%d%H%M%S")
-                
+                #Random generate soft/aggressive random playlist pairs
+                playlists = {}
+                random_int = random.randint(1, 10000)
                 label_hashes = generate_random_hashes()
 
-                playlists = {}
-
                 for i in range(MAX_TGENS):
-                    seed_playlist = seed + i
-                    role = "soft" if i % 2 == 0 else "aggressive"
+                    role_index = random_int + i
+                    role = "soft" if role_index % 2 == 0 else "aggressive"
                     playlist = create_random_playlist(
                         total_seconds=CHALLENGE_DURATION,
                         label_hashes=label_hashes,
                         role=role,
-                        seed=seed_playlist
                     )
-                    random.seed(None)  # Reset the random seed before shuffling
-                    random.shuffle(playlist)
                     playlists[f"tgen-{i}"] = playlist
                 
+                start_time = datetime.now()
+                backup_suffix = start_time.strftime("%Y%m%d%H%M%S")
+
                 if subset_miners:
                     success = False
                     while not success :

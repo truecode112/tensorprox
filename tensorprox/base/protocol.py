@@ -1,6 +1,6 @@
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, Field, model_validator
 import bittensor as bt
-from typing import Dict, Tuple
+from typing import List, Tuple, Any
 from tensorprox import *
 from tensorprox import settings
 settings.settings = settings.Settings.load(mode="validator")
@@ -14,22 +14,39 @@ class MachineDetails(BaseModel):
 
     def get(self, key, default=None):
         return getattr(self, key, default)
-    
+
+
 class MachineConfig(BaseModel):
     key_pair: Tuple[str, str] = ("", "")
-    traffic_generators: list[MachineDetails] = Field(default_factory=list)
+    traffic_generators: List[MachineDetails] = Field(default_factory=list)
     king: MachineDetails = Field(default_factory=MachineDetails)
     moat_private_ip: str = ""
 
+    @model_validator(mode='before')
+    def truncate_traffic_generators(cls, values):
+        # Truncate the traffic_generators to MAX_TGENS
+        traffic_generators = values.get('traffic_generators', [])
+        values['traffic_generators'] = traffic_generators[:MAX_TGENS]
+        return values
+    
 class PingSynapse(bt.Synapse):
+
+    # Adding MAX_TGENS as an immutable attribute
+    max_tgens: int = Field(
+        default_factory=lambda: MAX_TGENS,
+        title="Max Traffic Generators", 
+        description="Maximum number of traffic generators", 
+        allow_mutation=False
+    )
+
     machine_availabilities: MachineConfig = Field(
         default_factory=MachineConfig,
         title="Machine's Availabilities",
-        description="Contains both traffic generators and fixed infra nodes (king, moat).",
+        description="Contains all machines' details for setup and challenge processing",
         allow_mutation=True,
     )
 
-    def serialize(self) -> dict[str, any]:
+    def serialize(self) -> dict[str, Any]:
         return {
             "machine_availabilities": {
                 "key_pair": self.machine_availabilities.key_pair,
@@ -42,12 +59,12 @@ class PingSynapse(bt.Synapse):
     @classmethod
     def deserialize(cls, data: dict) -> "PingSynapse":
         avail_data = data.get("machine_availabilities", {})
+        max_tgens = avail_data.get("max_tgens", MAX_TGENS)  # Ensure max_tgens is obtained from the data or default to MAX_TGENS
+        traffic_gens = avail_data.get("traffic_generators", [])[:max_tgens]  # truncate here
         return cls(
             machine_availabilities=MachineConfig(
                 key_pair=tuple(avail_data.get("key_pair", ("", ""))),
-                traffic_generators=[
-                    MachineDetails(**m) for m in avail_data.get("traffic_generators", [])
-                ],
+                traffic_generators=[MachineDetails(**m) for m in traffic_gens],
                 king=MachineDetails(**avail_data.get("king", {})),
                 moat_private_ip=avail_data.get("moat_private_ip", ""),
             ),

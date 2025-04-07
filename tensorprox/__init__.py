@@ -15,10 +15,10 @@ __spec_version__ = _version_to_int(__version__)
 EPSILON: int = 15
 DELTA: int = 15
 CHALLENGE_DURATION: int = 60 #15 minutes
-MAX_TGENS = 8
+MAX_TGENS = 1
 
 #Timeouts
-ROUND_TIMEOUT: int = 300 #150 blocks / 30 minutes
+ROUND_TIMEOUT: int = 240 #150 blocks / 30 minutes
 INITIAL_SETUP_TIMEOUT: int = 30 # 30 seconds
 LOCKDOWN_TIMEOUT: int = 60
 GRE_SETUP_TIMEOUT: int = 180

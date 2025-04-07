@@ -96,6 +96,7 @@ class Miner(BaseMinerNeuron):
     stop_firewall_event: Event = Field(default_factory=Event)
     packet_buffers: Dict[str, List[Tuple[bytes, int]]] = Field(default_factory=lambda: defaultdict(list))
     batch_interval: int = 10
+    max_tgens: int = 0
     traffic_generators: List[Tuple[str, str, str]] = Field(default=None)
     machines: List[Tuple[str, str, str]] = Field(default=None)
 
@@ -135,9 +136,11 @@ class Miner(BaseMinerNeuron):
             synapse.machine_availabilities.key_pair = (ssh_public_key, ssh_private_key)
 
             # === Step 1: Add traffic generation machines ===
+            # Limit the number of traffic generators to max_tgens
+            self.max_tgens = synapse.max_tgens
             synapse.machine_availabilities.traffic_generators = [
                 MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip, index=str(index))
-                for index, (ip, _, private_ip) in enumerate(self.traffic_generators)
+                for index, (ip, _, private_ip) in enumerate(self.traffic_generators[:self.max_tgens])  # Limit by max_tgens
             ]
 
             # === Step 2: Add infra nodes (king + moat) ===
@@ -190,7 +193,7 @@ class Miner(BaseMinerNeuron):
             logger.debug(f"📧 Synapse received from {synapse.dendrite.hotkey}. Task : {task} | State : {state}.")
 
             if state == "GET_READY":
-                interfaces = [f"gre-tgen-{i}" for i in range(len(self.traffic_generators))]
+                interfaces = [f"gre-tgen-{i}" for i in range(self.max_tgens)]
                 if not self.firewall_active:
                     self.firewall_active = True
                     self.stop_firewall_event.clear()  # Reset stop event
@@ -858,7 +861,7 @@ if __name__ == "__main__":
     
     # Run the repository cloning setup first, wait for it to complete
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(setup_machines("", machines))
+    loop.run_until_complete(setup_machines("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", machines))
 
     with Miner(traffic_generators=traffic_generators, machines=machines) as miner:
         while not miner.should_exit:

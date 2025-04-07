@@ -1617,7 +1617,7 @@ class GRESetup:
         # Clean up existing interfaces
         # Look for any interfaces with 'gre-tgen-' prefix or existing king tunnel
         devices_to_clean = ["gre-king", "ipip-to-king"]
-        for i in range(len(traffic_gen_ips) + 10):  # Clean even more than we need to be safe
+        for i in range(256):  # Clean even more than we need to be safe
             devices_to_clean.append(f"gre-tgen-{i}")
         
         for dev in devices_to_clean:
