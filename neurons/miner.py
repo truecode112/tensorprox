@@ -97,7 +97,7 @@ class Miner(BaseMinerNeuron):
     firewall_thread: Thread = None
     stop_firewall_event: Event = Field(default_factory=Event)
     packet_buffers: Dict[str, List[Tuple[bytes, int]]] = Field(default_factory=lambda: defaultdict(list))
-    batch_interval: int = 10
+    batch_interval: int = 5  # Reduced from 10 to 5 for faster processing
     max_tgens: int = 0
     traffic_generators: List[Tuple[str, str, str]] = Field(default=None)
     machines: List[Tuple[str, str, str]] = Field(default=None)
